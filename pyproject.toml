@@ -17,7 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = ["anthropic>=1.0"]
 dev = [
+    "anthropic>=1.0",
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
@@ -36,6 +38,11 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Word lists are kept as split strings for readability; curly quotes are intentional
+# in the sentence-splitting pattern.
+"newsrag/engines/rules.py" = ["SIM905", "RUF001"]
 
 [tool.mypy]
 python_version = "3.11"

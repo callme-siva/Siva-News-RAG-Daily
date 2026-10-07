@@ -9,6 +9,7 @@ from pathlib import Path
 
 from newsrag import __version__
 from newsrag.config import load_config
+from newsrag.engines import EngineUnavailable, process_all, select_engine
 from newsrag.logging_setup import setup_logging
 from newsrag.pipeline import collect
 from newsrag.pipeline.fetch import fetch_all
@@ -103,6 +104,42 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_process(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    settings = _settings_for(args)
+    if args.mode:
+        settings.llm.mode = args.mode
+    KEYS.load_from_env()
+
+    async def run() -> int:
+        report = await collect(cfg, settings, KEYS)
+        items = report.items[: args.limit]
+        try:
+            choice = await select_engine(settings.llm, cfg, KEYS, task="processing")
+        except EngineUnavailable as exc:
+            print(f"LLM not available: {exc}")
+            return 1
+        print(f"Engine: {choice.engine.label} | {choice.reason}")
+        try:
+            results = await process_all(choice.engine, items, concurrency=settings.llm.concurrency)
+        finally:
+            await choice.aclose()
+        for item, p in zip(items, results, strict=True):
+            tag = p.engine.value + (f", fallback: {p.fallback_reason}" if p.fallback_reason else "")
+            flag = "" if p.relevant else "  [not relevant]"
+            print(f"\n[{tag}] {item.region} {p.category}: {item.title[:90]}{flag}")
+            print(f"  {p.summary[:300]}")
+            if p.key_facts:
+                print(f"  facts: {' | '.join(f[:80] for f in p.key_facts[:3])}")
+            names = p.entities.flat()
+            if names:
+                print(f"  entities: {', '.join(names[:8])}")
+        print("\n(dry run: nothing is stored until stage 4)")
+        return 0
+
+    return asyncio.run(run())
+
+
 def _cmd_recent(_: argparse.Namespace) -> int:
     for path in recent_workspaces():
         print(path)
@@ -122,6 +159,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_src.add_argument("--all", action="store_true", help="with --check, include disabled sources")
     p_fetch = sub.add_parser("fetch", help="fetch, filter, dedupe and rank (dry run, no storage)")
     p_fetch.add_argument("--show", type=int, default=20, help="how many items to print")
+    p_proc = sub.add_parser("process", help="fetch then summarise and tag items (dry run)")
+    p_proc.add_argument("--limit", type=int, default=5, help="how many items to process")
+    p_proc.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
     for name in NOT_BUILT:
         sub.add_parser(name, help=f"(available from stage {NOT_BUILT[name]})")
     return parser
@@ -135,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         "recent": _cmd_recent,
         "sources": _cmd_sources,
         "fetch": _cmd_fetch,
+        "process": _cmd_process,
     }
     if args.command in NOT_BUILT:
         print(f"'{args.command}' is not built yet (stage {NOT_BUILT[args.command]}).")

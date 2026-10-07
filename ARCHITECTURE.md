@@ -95,8 +95,8 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Vector store | Chroma or LanceDB | Embedded, runs in a folder, metadata filters | No server, no account | Qdrant (server), FAISS (no metadata filters) |
 | Embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) or Ollama (`nomic-embed-text`) | Free, local, small, good quality | Works offline with zero keys | Hosted embeddings (key, cost, data leaves machine) |
 | Rerank | `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) | Small, fast, well-known reranker; same library as embeddings | Better precision with no new dependency | Hosted rerank APIs (key, cost) |
-| Rule-based NLP | `sumy` (TextRank), `spaCy` (optional) | Extractive summaries and entities without an LLM | Useful output in zero-key mode | None that is free and offline |
-| Hosted LLMs | `anthropic`, `google-genai`, OpenAI-compatible | Users bring the provider they have | Best quality text when a key exists | — |
+| Rule-based NLP | Standard-library extractive rules | Lead-sentence summaries, numeric key facts, capitalisation-based entities; nothing invented | Useful output in zero-key mode with no model downloads | `sumy` TextRank, `spaCy` (heavier; can be added behind the same `Engine` interface) |
+| Hosted LLMs | Official `anthropic` SDK for Claude; `httpx` for Gemini and OpenAI-compatible APIs | Claude: structured outputs guarantee schema-valid JSON, per-task effort (`low` for tagging, `medium` for chat/digest), server-side refusal fallbacks. Others: one small client each | Best quality text when a key exists; one interface (`LLMClient`) for all providers | Provider SDKs for every vendor (more dependencies) |
 | Local LLMs | Ollama, OpenAI-compatible local servers via `httpx` | Popular, simple, no key, private | Full offline mode with LLM quality | Hard-coding one runtime |
 | Quality | `pytest`, `ruff`, `mypy`, `pre-commit` | Standard, fast | Catches regressions; consistent code across colleagues | — |
 | Scheduling (optional) | cron, launchd, GitHub Actions | OS-native, no extra service | Automate later without code changes | Always-on scheduler process |
