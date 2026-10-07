@@ -14,23 +14,52 @@ This document explains **how the app is put together, which tools it uses, why e
 | Agent-ready | Core operations are typed, side-effect-labelled tools | Adding an agent later is a feature, not a rewrite |
 
 ## 2. System overview
+```mermaid
+flowchart TB
+    subgraph ingest["Ingest: on demand or scheduled"]
+        direction LR
+        SRC["Sources<br/>35 RSS feeds, GDELT, keyed APIs"] --> PIPE["Pipeline<br/>normalise, filter, dedupe, rank"]
+        PIPE --> ENG{"Engine"}
+        ENG -->|"no LLM"| RULES["RuleEngine<br/>extractive, no key"]
+        ENG -->|"LLM available"| LLM["LLMEngine<br/>validated JSON"]
+        RULES --> CHUNK["Chunk and embed<br/>local model"]
+        LLM --> CHUNK
+    end
+    CHUNK --> DB[("Workspace SQLite<br/>items, FTS5 keywords,<br/>vectors, runs")]
+    subgraph serve["Serve"]
+        direction LR
+        SEARCH["Hybrid search<br/>keyword + semantic,<br/>fusion, rerank"]
+        ASK["Ask<br/>grounded chat"]
+        TODAY["Today<br/>briefing"]
+        BROWSE["Browse"]
+        SEARCH --> ASK
+        SEARCH --> BROWSE
+    end
+    DB --> SEARCH
+    DB --> TODAY
+    CALLERS["Streamlit UI, CLI,<br/>future agent"] -.->|"call typed tools"| serve
 ```
-                       ┌──────────────────────── Workspace folder ────────────────────────┐
-                       │  newsrag.db (SQLite: articles, chunks, FTS5, runs, sources)      │
-                       │  (vectors are BLOBs in the same SQLite file)  digests/  backups/   │
-                       └──────────────────────────────────────────────────────────────────┘
-                                   ▲                          ▲
- INGEST (on demand)                │                          │         SERVE
- ─────────────────                 │                          │         ─────
- Source adapters ─► Normalise ─► Filter ─► Dedupe/Rank ─► Engine.process ─► Chunk ─► Index
- (RSS, GDELT,                                              (rules | LLM)          (FTS5 + vectors)
-  GDELT, keyed APIs)                                                                     │
-                                                                                         ▼
-                                    Today (digest) ◄─ Engine.briefing        Ask / Browse
-                                                                                 │
-                       question ─► filters ─► keyword search ─┐                   │
-                                           ─► semantic search ┴► RRF fusion ─► rerank ─► group ─► Engine.answer
-                                                                                         (rules: cited list | LLM: cited answer)
+
+### 2.1 One run, step by step
+```mermaid
+flowchart TD
+    START(["newsrag run<br/>or Fetch now"]) --> LOOK["Look back to the last run<br/>(48 h minimum, 7 days maximum)"]
+    LOOK --> FETCH["Fetch all enabled sources in parallel<br/>robots.txt, retries, per-host spacing"]
+    FETCH --> FILTER["Filter: too old, excluded, off-topic"]
+    FILTER --> DEDUPE["Dedupe this batch, rank, cap per region and category"]
+    DEDUPE --> SEEN{"URL already seen?"}
+    SEEN -->|yes| SKIP["Skip: no LLM call"]
+    SEEN -->|no| NEAR{"Same story stored<br/>in the last 3 days?"}
+    NEAR -->|yes| ATTACH["Attach as another source"]
+    NEAR -->|no| PROC["Process: rules or LLM<br/>summary, facts, entities, relevance"]
+    PROC --> REL{"Relevant?"}
+    REL -->|no| MARK["Mark seen, do not store"]
+    REL -->|yes| WRITE["Chunk, embed, write<br/>in ONE transaction"]
+    WRITE --> DIGEST["Write today's briefing<br/>Markdown, HTML, JSON, optional email"]
+    SKIP --> DIGEST
+    ATTACH --> DIGEST
+    MARK --> DIGEST
+    DIGEST --> LOG(["Record the run summary"])
 ```
 
 All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, CLI and a future agent all call.
@@ -55,6 +84,20 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 5. **Cross-encoder rerank** re-scores the fused candidates against the question.
 6. **Relevance floor:** drop candidates that only the vector search found with similarity below `min_similarity` (0.30). Without it, any question returns the nearest articles and "no news on that" can never trigger.
 7. **Group by article**, at most 2 chunks each, cut to `top_k` (8).
+
+```mermaid
+flowchart LR
+    Q["Question"] --> F["Filters<br/>region, category, dates"]
+    F --> KW["Keyword search<br/>FTS5 BM25, stopwords removed<br/>top 30"]
+    F --> SEM["Semantic search<br/>cosine on local vectors<br/>top 30"]
+    KW --> RRF["Reciprocal rank fusion<br/>keyword_weight"]
+    SEM --> RRF
+    RRF --> FLOOR{"Keyword match, or<br/>similarity >= 0.30?"}
+    FLOOR -->|no| DROP["Dropped"]
+    FLOOR -->|yes| RR["Cross-encoder rerank<br/>skipped if off or unavailable"]
+    RR --> G["Group by article<br/>max 2 chunks each"]
+    G --> K["Top 8 hits"]
+```
 
 ### 4.2 Why this design
 | Choice | Why | Benefit |
@@ -81,6 +124,32 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 ### 4.4 Cost of the choice
 - Reranking adds CPU time per question (roughly proportional to `candidates_k`). It can be switched off, and `candidates_k` lowered, in Settings.
 - Two indexes (FTS5 + vectors) must stay in sync. The store owns both and updates them together, and "Verify integrity" checks them.
+
+### 4.5 Grounded chat, end to end
+```mermaid
+sequenceDiagram
+    actor U as You
+    participant C as Chat (code)
+    participant S as Hybrid search
+    participant L as LLM (optional)
+    U->>C: Question + filters (region, days)
+    C->>S: search_news(question, filters)
+    S-->>C: Numbered passages [1..n]
+    alt Nothing relevant found
+        C-->>U: "I don't have news on that..." (written by code, LLM not called)
+    else No LLM available
+        C-->>U: Cited list of the articles (rules)
+    else LLM available
+        C->>L: Passages + question + short history
+        L-->>C: JSON: answerable, answer with [n] citations
+        C->>C: Keep only citations 1..n, build Sources list from the store
+        alt No valid citation left
+            C-->>U: Cited list of the articles, with a note
+        else
+            C-->>U: Answer + Sources (labelled LLM)
+        end
+    end
+```
 
 ## 5. Tool and library choices
 | Area | Tool | Why chosen | Benefit | Alternatives considered |
@@ -118,10 +187,18 @@ the same SQLite file.
   `Store` hides this, so the change would be local.
 
 ## 6. Hybrid engine (rules or LLM)
-```
-startup ─► settings.mode? ─► rules ───────────────► RuleEngine
-                         └─► auto / llm ─► LLM reachable? ─ yes ─► LLMEngine ─ per-item failure ─► RuleEngine for that item
-                                                         └ no ──► RuleEngine (auto)  |  error message (llm only)
+```mermaid
+flowchart TD
+    M{"Settings: engine mode"} -->|rules| R["RuleEngine"]
+    M -->|"auto or llm"| P{"Configured provider works?<br/>key present, server answers, model found"}
+    P -->|yes| L["LLMEngine"]
+    P -->|"no, and mode is auto"| A{"Anthropic key present<br/>and working?"}
+    A -->|yes| L
+    A -->|no| R2["RuleEngine<br/>reason shown in the UI"]
+    P -->|"no, and mode is llm"| E["Stop with a clear error"]
+    L --> I{"For each article:<br/>valid JSON after one retry?"}
+    I -->|yes| OUT["Written by LLM"]
+    I -->|no| FB["Rules for that article<br/>reason recorded"]
 ```
 **Benefits:** the app never fails because of an LLM; quality improves automatically when an LLM exists; every output is labelled with the engine that wrote it.
 
@@ -132,19 +209,76 @@ startup ─► settings.mode? ─► rules ────────────�
 | `seen_urls` | URL and first-seen date | Idempotent ingest; kept after cleanup so old items are not re-fetched |
 | `chunks` + `chunks_fts` | Chunk text with header, FTS5 index | Keyword search and citations |
 | `embeddings` | Chunk vectors (float32 BLOB) keyed by `chunk_id` | Semantic search; deleted with their chunk |
-| `runs`, `run_errors` | Per-fetch summary and failures | Fetch page history, troubleshooting |
-| `sources` | User-edited sources (defaults stay in `config.yaml`) | Safe editing, restore defaults |
-| `series` (later) | `series, date, value, unit, source` | Numeric data such as gold rates, answered with SQL |
+| `runs` | Per-run summary as JSON, including failed sources and errors | Fetch page history, catch-up window, troubleshooting |
+| `series` | `series, date, source, value, unit`; key `(series, date, source)` | Numeric data such as gold rates (not used by news in v1) |
+| `meta` | Schema version | Refuse to open a database from a newer app |
+| `sources.json` (file, not a table) | Your added sources and on/off choices | Safe editing; shipped `config.yaml` is never changed |
+
+```mermaid
+erDiagram
+    items ||--o{ chunks : "split into"
+    chunks ||--|| embeddings : "has vector"
+    chunks ||--|| chunks_fts : "indexed in"
+    items ||--o{ seen_urls : "known by"
+    items {
+        text item_id PK "sha256 of normalised URL"
+        text url UK
+        text title
+        text source
+        text region
+        text category
+        int published_ts
+        text summary
+        text engine "rules or llm"
+        text content_hash
+    }
+    chunks {
+        text chunk_id PK "item_id:n"
+        text item_id FK
+        int chunk_index
+        text text "header + content"
+    }
+    embeddings {
+        text chunk_id PK
+        int dim
+        blob vector "float32"
+    }
+    chunks_fts {
+        text chunk_id
+        text text "FTS5, BM25"
+    }
+    seen_urls {
+        text url PK
+        text item_id
+        text outcome "stored, merged, irrelevant"
+    }
+    runs {
+        int run_id PK
+        int finished_ts
+        text summary "JSON"
+    }
+    series {
+        text series PK
+        text date PK
+        text source PK
+        real value
+        text unit
+    }
+```
 
 ### 7.1 How duplicates are prevented
+Order as in the code: the batch merge runs in the pipeline, the other checks in `ingest.py`.
+```mermaid
+flowchart LR
+    I["Fetched items"] --> L1["Layer 1<br/>normalise URL,<br/>item_id = sha256"]
+    L1 --> L3a["Layer 3a<br/>merge same story in this batch:<br/>keep the richest, list other outlets"]
+    L3a --> L2{"Layer 2<br/>URL in seen_urls?"}
+    L2 -->|yes| S1["Skip, no LLM call"]
+    L2 -->|no| L3b{"Layer 3b<br/>same story stored<br/>in last 3 days?"}
+    L3b -->|yes| M2["Attach as another source<br/>of the stored item"]
+    L3b -->|no| L4["Process, then Layer 4:<br/>chunk ids item_id:n,<br/>one transaction"]
 ```
-fetched item
-  → normalise URL → item_id = sha256(url)              (layer 1: same URL, different spelling)
-  → in seen_urls?                 yes → skip, no LLM call  (layer 2: seen in an earlier run)
-  → near-duplicate in this batch?  yes → merge sources     (layer 3a)
-  → near-duplicate in last 3 days? yes → attach as source  (layer 3b)
-  → process → chunk ids = item_id:n → upsert in one transaction   (layer 4: idempotent writes)
-```
+
 | Design choice | Why | Benefit |
 |---------------|-----|---------|
 | Normalised URL hashed into the ID | Same article appears with tracking parameters and redirects | One article, one ID, everywhere |

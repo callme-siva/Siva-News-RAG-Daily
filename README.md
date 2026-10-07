@@ -10,7 +10,29 @@ Ollama, or Claude, Gemini or an OpenAI-compatible API.
 - Acceptance results with raw output: [ACCEPTANCE.md](ACCEPTANCE.md)
 - Prompt to rebuild it with Claude Code: [PROMPT.md](PROMPT.md)
 
+## How it works
+```mermaid
+flowchart LR
+    FEEDS["News feeds<br/>US, Europe, India"] --> RUN["newsrag run<br/>fetch, filter, dedupe"]
+    RUN --> ENG{"LLM available?"}
+    ENG -->|"no key, no Ollama"| RULES["Rules<br/>extractive summaries"]
+    ENG -->|"Ollama, Claude,<br/>Gemini..."| LLM["LLM<br/>summaries, tags"]
+    RULES --> WS[("Your workspace folder<br/>articles, search index,<br/>briefings, settings")]
+    LLM --> WS
+    WS --> TODAY["Today's briefing<br/>file, UI, optional email"]
+    WS --> ASK["Ask<br/>answers with sources"]
+    WS --> BROWSE["Browse and search"]
+```
+- **Collect**: 35 checked RSS feeds; duplicates are blocked before anything is processed.
+- **Understand**: an LLM writes summaries if one is available; otherwise rules copy the key
+  sentences. Every item is labelled with which one wrote it.
+- **Remember**: articles go into one SQLite file with keyword search and local vector search.
+- **Serve**: a morning briefing and a chat that answers only from stored articles, with sources.
+
+Details and design choices: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Contents
+0. [How it works](#how-it-works)
 1. [Setup](#setup)
 2. [First run](#first-run)
 3. [Web UI](#web-ui)
@@ -98,6 +120,14 @@ Keys typed in the UI live in memory for that session only. They are never writte
 logs, settings or URLs (checked in [ACCEPTANCE.md](ACCEPTANCE.md), criterion 7).
 
 ## Running it every day
+```mermaid
+flowchart LR
+    SCHED["launchd, cron or<br/>GitHub Actions<br/>06:30 daily"] --> RUN["newsrag run"]
+    RUN --> CATCH["Looks back to the last run<br/>(catches up missed days)"]
+    CATCH --> STORE["Stores only new articles"]
+    STORE --> BRIEF["Writes today's briefing"]
+    BRIEF --> MAIL["Optional email"]
+```
 The app does not need to run all the time. Any scheduler that runs `newsrag run` works; each run
 looks back to the previous run (up to `max_catchup_days`, default 7), so missed days catch up.
 
