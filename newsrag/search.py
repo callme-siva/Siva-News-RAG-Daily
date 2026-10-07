@@ -60,6 +60,7 @@ class SearchHit(BaseModel):
     engine: str
     found_by: list[str]
     fused_score: float
+    semantic_score: float | None = None
     rerank_score: float | None = None
 
 
@@ -95,6 +96,7 @@ def search(
     result = SearchResult(query=query, mode=mode, reranked=False)
     f = filters.to_store()
     rankings: dict[str, list[str]] = {}
+    similarity: dict[str, float] = {}
 
     if mode in ("hybrid", "keyword"):
         rankings["keyword"] = store.keyword_candidates(query, f, settings.candidates_k)
@@ -112,6 +114,7 @@ def search(
                     sims = matrix @ qv
                     order = np.argsort(-sims)[: settings.candidates_k]
                     rankings["semantic"] = [ids[i] for i in order]
+                    similarity = {ids[i]: float(sims[i]) for i in order}
             except EmbeddingError as exc:
                 result.notes.append(f"semantic search skipped: {exc}")
 
@@ -119,7 +122,18 @@ def search(
     fused = rrf(rankings, {"keyword": 2 * w, "semantic": 2 * (1 - w)})
     if not fused:
         return result
-    ordered = sorted(fused, key=lambda cid: -fused[cid])[: settings.candidates_k]
+    # Relevance floor: vector search always returns *something*, so a semantic-only match
+    # must be similar enough. Keyword matches pass (the query words are in the text).
+    keyword_ids = set(rankings.get("keyword", []))
+    relevant = [
+        cid
+        for cid in fused
+        if cid in keyword_ids or similarity.get(cid, 0.0) >= settings.min_similarity
+    ]
+    dropped = len(fused) - len(relevant)
+    if dropped and not relevant:
+        result.notes.append("no stored article is relevant enough to this query")
+    ordered = sorted(relevant, key=lambda cid: -fused[cid])[: settings.candidates_k]
     details = store.chunk_details(ordered)
     ordered = [cid for cid in ordered if cid in details]
 
@@ -160,6 +174,7 @@ def search(
                 engine=d["engine"],
                 found_by=[name for name, ids in rankings.items() if cid in ids],
                 fused_score=round(fused[cid], 6),
+                semantic_score=None if cid not in similarity else round(similarity[cid], 4),
                 rerank_score=None if score is None else round(score, 4),
             )
         )

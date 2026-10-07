@@ -104,6 +104,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
   3. **Semantic search:** vector similarity over chunk embeddings, returning `candidates_k` results.
   4. **Fusion:** merge both lists with reciprocal rank fusion (RRF, constant `k = 60`). A `keyword_weight` setting (0–1, default 0.5) balances the two lists.
   5. **Rerank:** a local cross-encoder (default `cross-encoder/ms-marco-MiniLM-L-6-v2`, via `sentence-transformers`) re-scores the fused candidates against the question. On by default; can be turned off. If the model cannot load, skip this step and log it.
+  5b. **Relevance floor:** keep a candidate only if the keyword search matched it or its semantic similarity is at least `min_similarity` (default 0.30). Vector search always returns neighbours, so this is what lets chat say "I don't have news on that" from code. The rerank score is not used as the floor: the cross-encoder gives near-zero scores to relevant passages for short keyword-style queries.
   6. **Group and cut:** keep at most `max_chunks_per_article` (default 2) per article, drop results below `min_score`, return `top_k` (default 8).
 - FR16a: Search mode setting: **Hybrid** (default), **Semantic only**, or **Keyword only**. All modes work with no API key.
 - FR16b: Each result records which search found it (keyword, semantic or both) and its rerank score, shown in the trace and the Browse page for debugging.
@@ -111,11 +112,11 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 
 ### 5.5 Briefing
 - FR17: Build a digest grouped by region then category with a "Top of the day" block.
-- FR18: Rule mode uses a template. LLM mode writes the text from the selected articles only.
+- FR18: Code selects and numbers the articles (last 24 hours, per region and category, most-reported first). The writer (template or LLM) returns lines of headline, why-it-matters and article numbers. Code drops lines citing articles outside their section or not in the list, fills empty sections from the template (with a note), and adds every link itself.
 - FR19: Output as HTML and Markdown in `out/`. Optional email via SMTP, with credentials supplied the same way as keys (R3).
 
 ### 5.6 Chat
-- FR20: Answer from retrieved chunks only, with numbered citations and a Sources list (R4, R5).
+- FR20: Answer from retrieved chunks only, with numbered citations and a Sources list (R4, R5). When retrieval finds nothing relevant, the "I don't have news on that" reply is produced by code without calling the LLM. Citations that do not match a retrieved passage are removed; an answer left with none falls back to the cited article list.
 - FR21: Rule mode returns ranked matching articles with snippets and links. LLM mode writes a short answer from them.
 - FR22: Honour filters set in the UI (regions, categories, date range) and keep short conversation memory (default 6 turns, configurable).
 
@@ -158,7 +159,7 @@ Start screen: **Open workspace** (recent list, choose folder, create new). Then 
 | Mode | Engine: Auto / Rules only / LLM only. Shows a badge for the active engine. |
 | LLM | Provider (Anthropic, Google Gemini, OpenAI-compatible, **Local: Ollama / OpenAI-compatible local server**), base URL (local only), model name or dropdown, **API key (password field, memory only; hidden for local)**, per-task model (processing, chat, digest), temperature, max output tokens, context length, request timeout, concurrency, "Test connection" button. |
 | Data | Workspace path (read-only display, "Switch workspace"), `retention_days`, auto-cleanup on or off, backup folder. |
-| Retrieval | Search mode (Hybrid / Semantic / Keyword), `top_k`, `candidates_k`, `keyword_weight`, rerank on or off, rerank model, `max_chunks_per_article`, `min_score`, chunk size, chunk overlap, embedding model, conversation memory length. Changing chunk settings or the embedding model offers "Re-index". |
+| Retrieval | Search mode (Hybrid / Semantic / Keyword), `top_k`, `candidates_k`, `keyword_weight`, rerank on or off, rerank model, `max_chunks_per_article`, `min_score`, `min_similarity`, chunk size, chunk overlap, embedding model, conversation memory length. Changing chunk settings or the embedding model offers "Re-index". |
 | Sources | Toggle regions and categories, enable or disable each feed, add a custom RSS URL, `max_age_hours`, `max_per_group`, dedupe threshold. |
 | Briefing | Items per category, language style (brief / detailed), email on or off. |
 | Safety | Show/hide provenance badges (default on), "Clear stored data" with confirmation. |

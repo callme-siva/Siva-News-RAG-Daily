@@ -56,6 +56,7 @@ class RetrievalSettings(_Group):
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     max_chunks_per_article: int = Field(default=2, ge=1, le=10)
     min_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    min_similarity: float = Field(default=0.30, ge=0.0, le=1.0)
     chunk_size: int = Field(default=1600, ge=200, le=8000)
     chunk_overlap: int = Field(default=200, ge=0, le=2000)
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

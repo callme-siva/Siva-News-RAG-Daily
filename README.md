@@ -8,11 +8,13 @@ LLM automatically when one is available, including local models via Ollama.
 - Prompt to rebuild it with Claude Code: [PROMPT.md](PROMPT.md)
 
 ## Status
-Stage 4 of 7: stages 1-3 plus storage and search. `newsrag run` fetches, processes and stores
-new articles in the workspace (one SQLite file: rows, keyword index and vectors). Duplicates are
-blocked four ways (URL identity, seen URLs, cross-day near-duplicates, idempotent writes).
-`newsrag search` runs hybrid retrieval: filters, keyword (FTS5) + semantic search, rank fusion,
-local cross-encoder rerank, grouping by article. Digest, chat and UI arrive in later stages.
+Stage 5 of 7: stages 1-4 plus the morning digest, grounded chat and agent-ready tools.
+- `newsrag run` fetches, processes and stores new articles, then writes today's digest to
+  `digests/` (Markdown, HTML, JSON) and optionally emails it.
+- `newsrag chat` answers only from stored articles with code-checked citations, and says
+  "I don't have news on that" when nothing relevant is stored.
+- `newsrag tools` lists the typed tool functions a future agent will call.
+The UI arrives in stage 6.
 
 The first `run` or `search` downloads two small local models (about 90 MB each) from Hugging Face.
 
@@ -42,9 +44,19 @@ uv pip install -e ".[dev]"
 .venv/bin/python -m newsrag process --limit 5  # dry run: fetch, then summarise and tag
 .venv/bin/python -m newsrag run                # fetch, process and store new articles
 .venv/bin/python -m newsrag search "RBI rate hike" --region IN --days 7
+.venv/bin/python -m newsrag digest --print     # write (and show) today's briefing
+.venv/bin/python -m newsrag chat               # interactive; /region IN, /days 3, /quit
+.venv/bin/python -m newsrag chat "What did the RBI decide?" --region IN --days 3
+.venv/bin/python -m newsrag tools              # agent-ready tools (--json for schemas)
 .venv/bin/python -m newsrag data stats         # also: cleanup [--apply], verify [--repair],
                                                #       reindex, compact, backup, restore PATH
 ```
+
+## Email (optional)
+Set `email_enabled` in Settings and these environment variables (the password stays in memory):
+`NEWSRAG_SMTP_HOST`, `NEWSRAG_SMTP_PORT` (default 587), `NEWSRAG_SMTP_USER`,
+`NEWSRAG_SMTP_PASSWORD`, `NEWSRAG_SMTP_TO`, optional `NEWSRAG_SMTP_FROM`. For Gmail use an
+app password.
 
 ## Sources
 Feeds live in [newsrag/defaults/config.yaml](newsrag/defaults/config.yaml). Each was fetched,

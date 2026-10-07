@@ -54,8 +54,44 @@ _TITLES = frozenset(
 )
 
 
+_ABBREVIATIONS = (
+    "U.S.",
+    "U.K.",
+    "U.N.",
+    "E.U.",
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Dr.",
+    "Prof.",
+    "St.",
+    "Jr.",
+    "Sr.",
+    "Inc.",
+    "Ltd.",
+    "Co.",
+    "Corp.",
+    "vs.",
+    "e.g.",
+    "i.e.",
+    "No.",
+    "Gov.",
+    "Sen.",
+    "Rep.",
+)
+
+
 def split_sentences(text: str) -> list[str]:
-    return [s.strip() for s in _SENTENCE.split(text) if s.strip()]
+    """Split on sentence ends, but not after common abbreviations like "U.S." or "Mr."."""
+    out: list[str] = []
+    for piece in (p.strip() for p in _SENTENCE.split(text)):
+        if not piece:
+            continue
+        if out and out[-1].endswith(_ABBREVIATIONS):
+            out[-1] = f"{out[-1]} {piece}"
+        else:
+            out.append(piece)
+    return out
 
 
 def extractive_summary(title: str, body: str) -> str:

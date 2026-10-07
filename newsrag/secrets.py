@@ -22,6 +22,7 @@ ENV_VARS: dict[str, tuple[str, ...]] = {
     "thenewsapi": ("THENEWSAPI_KEY",),
     "currents": ("CURRENTS_API_KEY",),
     "newsapi": ("NEWSAPI_KEY",),
+    "smtp": ("NEWSRAG_SMTP_PASSWORD",),
 }
 
 _SECRET_PATTERNS = [
