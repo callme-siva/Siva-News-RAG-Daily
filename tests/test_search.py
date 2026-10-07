@@ -64,7 +64,7 @@ def _settings(**kw: object) -> RetrievalSettings:
 
 def test_fts_query_is_safe() -> None:
     # Every token is quoted, so FTS operators and punctuation in user text are inert.
-    assert fts_query('rates" OR 1=1; DROP') == '"rates" OR "OR" OR "1" OR "DROP"'
+    assert fts_query('rates" OR 1=1; DROP') == '"rates" OR "1" OR "DROP"'
     assert fts_query("!!!") is None
     assert fts_query("6.75% repo") == '"6.75%" OR "repo"'
 
@@ -207,3 +207,16 @@ def test_relevance_floor_drops_unrelated_semantic_matches(store: Store) -> None:
     assert ok.hits and all(
         "keyword" in h.found_by or (h.semantic_score or 0) >= 0.30 for h in ok.hits
     )
+
+
+def test_question_words_do_not_match_everything(store: Store) -> None:
+    """Regression: 'what/did/the/on' joined with OR matched almost every article live."""
+    assert fts_query("What did the RBI decide on interest rates?") == (
+        '"RBI" OR "decide" OR "interest" OR "rates"'
+    )
+    assert fts_query("Tell me the latest news") is None
+    assert fts_query("AI chips EU") == '"AI" OR "chips" OR "EU"'
+    res = search(
+        store, "What did the chipmaker do?", SearchFilters(), _settings(), FakeEmbedder(), None
+    )
+    assert all("Chipmaker" in h.title or (h.semantic_score or 0) >= 0.30 for h in res.hits)

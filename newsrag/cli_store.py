@@ -6,6 +6,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -20,7 +23,6 @@ from newsrag.briefing import (
     write_digest,
 )
 from newsrag.chat import ChatFilters, ChatSession, ask, format_answer
-from newsrag.config import load_config
 from newsrag.embeddings import CrossEncoderReranker, make_embedder
 from newsrag.engines import EngineUnavailable, select_engine
 from newsrag.ingest import reindex
@@ -29,6 +31,7 @@ from newsrag.runner import run_ingest
 from newsrag.search import SearchFilters, search
 from newsrag.secrets import KEYS
 from newsrag.settings import Settings, load_settings
+from newsrag.sources_config import effective_config
 from newsrag.store import Store, backup_workspace, restore_workspace
 from newsrag.tools import ToolContext, tool_schemas
 from newsrag.workspace import Workspace, WorkspaceError, open_workspace, recent_workspaces
@@ -57,7 +60,7 @@ def _context(ws: Workspace, settings: Settings) -> tuple[ToolContext, Store]:
     ctx = ToolContext(
         workspace=ws,
         store=store,
-        cfg=load_config(),
+        cfg=effective_config(ws.root),
         settings=settings,
         keys=KEYS,
         _embedder=_embedder_for(settings, ws),
@@ -242,6 +245,31 @@ def cmd_chat(args: argparse.Namespace) -> int:
         store.close()
 
 
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Start the Streamlit UI. The API keys in this shell's environment are loaded by the app."""
+    app = Path(__file__).parent / "ui" / "app.py"
+    env = dict(os.environ)
+    if args.workspace:
+        env["NEWSRAG_WORKSPACE"] = str(Path(args.workspace).expanduser().resolve())
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app),
+        "--server.port",
+        str(args.port),
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+        "--client.toolbarMode",
+        "minimal",
+    ]
+    print(f"Starting the UI at http://localhost:{args.port}  (Ctrl+C to stop)")
+    return subprocess.call(cmd, env=env)
+
+
 def cmd_tools(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(tool_schemas(), indent=2))
@@ -355,6 +383,9 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     p_chat.add_argument("--days", type=int, default=7, help="time range in days (default 7)")
     p_chat.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
 
+    p_ui = sub.add_parser("ui", help="start the web UI (Streamlit)")
+    p_ui.add_argument("--port", type=int, default=8501)
+
     p_tools = sub.add_parser("tools", help="list agent-ready tools and their schemas")
     p_tools.add_argument("--json", action="store_true", help="print full JSON schemas")
 
@@ -387,4 +418,5 @@ HANDLERS = {
     "digest": cmd_digest,
     "chat": cmd_chat,
     "tools": cmd_tools,
+    "ui": cmd_ui,
 }

@@ -86,7 +86,7 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Area | Tool | Why chosen | Benefit | Alternatives considered |
 |------|------|-----------|---------|-------------------------|
 | Language | Python 3.11+ | Best ecosystem for feeds, NLP, embeddings, LLM SDKs | One language end to end, incl. UI | Node (weaker local NLP) |
-| UI | Streamlit | Pure Python, fast to build, built-in chat, tables, progress | No frontend skills needed; colleagues can extend it | React (more work), Gradio (less suited to multi-page apps) |
+| UI | Streamlit (`st.navigation`, segmented controls, chat, data editor); theme and text size applied with CSS variables | Pure Python, fast to build, built-in chat, tables, progress | No frontend skills needed; colleagues can extend it; every page is a thin layer over tested functions | React (more work), Gradio (less suited to multi-page apps) |
 | HTTP | `httpx` + `tenacity` | Async, timeouts, clean retry with backoff | Parallel fetch; one bad feed never stalls the run | `requests` (sync only) |
 | Feeds | `feedparser` | Mature, handles messy real-world RSS and Atom | Fewer parsing failures | Hand-written XML parsing |
 | Full text (optional) | `trafilatura` | Strong article extraction | Richer summaries when allowed | `newspaper3k` (less maintained) |

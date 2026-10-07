@@ -8,13 +8,21 @@ LLM automatically when one is available, including local models via Ollama.
 - Prompt to rebuild it with Claude Code: [PROMPT.md](PROMPT.md)
 
 ## Status
-Stage 5 of 7: stages 1-4 plus the morning digest, grounded chat and agent-ready tools.
-- `newsrag run` fetches, processes and stores new articles, then writes today's digest to
-  `digests/` (Markdown, HTML, JSON) and optionally emails it.
-- `newsrag chat` answers only from stored articles with code-checked citations, and says
-  "I don't have news on that" when nothing relevant is stored.
-- `newsrag tools` lists the typed tool functions a future agent will call.
-The UI arrives in stage 6.
+All 6 build stages done (stage 7 is docs and scheduling). Fetch, process, store, search, digest,
+grounded chat, agent-ready tools, and a web UI.
+
+## Web UI
+```bash
+.venv/bin/python -m newsrag ui                         # http://localhost:8501
+.venv/bin/python -m newsrag --workspace ~/NewsRAG/personal ui
+```
+- Start screen: open a recent workspace or create one in any folder.
+- Top right: text size **A / A+ / A++** and theme **Light / Dark / System** (saved per workspace).
+- Pages: **Today** (briefing, region filter), **Ask** (grounded chat with sources),
+  **Browse** (search or latest), **Fetch** (fetch now, run history), **Sources** (on/off,
+  add and check a feed, OPML import/export), **Data** (stats, cleanup with backup, delete by
+  source/region/date, verify, rebuild index, backup/restore), **Settings** (LLM, keys in
+  memory only, retrieval, sources, briefing).
 
 The first `run` or `search` downloads two small local models (about 90 MB each) from Hugging Face.
 
