@@ -1,0 +1,71 @@
+# GitHub Actions example: run daily in the cloud and email the briefing.
+# To use: copy to .github/workflows/daily.yml in YOUR OWN PRIVATE repository.
+#
+# Read this first:
+# - Runners are temporary. The workspace is kept between runs with actions/cache, which is
+#   best-effort: GitHub evicts caches not used for 7 days and caps total size. Treat the cloud
+#   workspace as disposable (dedupe history may reset); keep your main workspace on your Mac.
+# - Each run installs dependencies and may download the two local models (~180 MB), which
+#   are cached as well. Expect a few minutes per run.
+# - Keys go in repository secrets (Settings -> Secrets and variables -> Actions), never in files.
+# - Without LLM secrets the run uses the rules engine; that is fine.
+
+name: daily-news
+
+on:
+  schedule:
+    - cron: "30 1 * * *"   # 01:30 UTC = 07:00 IST. GitHub may delay scheduled runs.
+  workflow_dispatch: {}    # allows a manual "Run workflow" button
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore workspace and model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/newsrag-workspace
+            ~/.cache/huggingface
+          key: newsrag-${{ github.run_id }}
+          restore-keys: newsrag-
+
+      - name: Install (CPU-only PyTorch; the default Linux wheel pulls GPU libraries)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
+
+      - name: Fetch, store, write and email the briefing
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NEWSRAG_SMTP_HOST: ${{ secrets.NEWSRAG_SMTP_HOST }}
+          NEWSRAG_SMTP_USER: ${{ secrets.NEWSRAG_SMTP_USER }}
+          NEWSRAG_SMTP_PASSWORD: ${{ secrets.NEWSRAG_SMTP_PASSWORD }}
+          NEWSRAG_SMTP_TO: ${{ secrets.NEWSRAG_SMTP_TO }}
+        run: |
+          python -m newsrag --workspace ~/newsrag-workspace workspace
+          python - <<'PY'
+          from pathlib import Path
+          from newsrag.settings import load_settings, save_settings
+          root = Path.home() / "newsrag-workspace"
+          s = load_settings(root)
+          s.briefing.email_enabled = True
+          s.data.auto_cleanup = True
+          s.data.retention_days = 30
+          save_settings(root, s)
+          PY
+          python -m newsrag --workspace ~/newsrag-workspace run
+
+      - name: Keep the briefing as a downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: briefing
+          path: ~/newsrag-workspace/digests/
+          retention-days: 14

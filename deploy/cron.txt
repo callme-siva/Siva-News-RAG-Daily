@@ -1,0 +1,14 @@
+# cron (Linux, or macOS if you prefer cron over launchd)
+# Edit with: crontab -e
+# Runs every day at 06:30 local time: fetch, process, store, write (and optionally email) the briefing.
+# Replace the paths. Keys are optional; put them in a file only you can read (chmod 600) and
+# source it, so they are not visible in the crontab itself.
+
+30 6 * * * cd /path/to/Siva-News-RAG-Daily && . "$HOME/.newsrag.env" 2>/dev/null; .venv/bin/python -m newsrag --workspace "$HOME/NewsRAG/personal" run >> "$HOME/NewsRAG/personal/logs/cron.log" 2>&1
+
+# ~/.newsrag.env (optional, chmod 600), for example:
+#   export ANTHROPIC_API_KEY=...
+#   export NEWSRAG_SMTP_HOST=smtp.gmail.com
+#   export NEWSRAG_SMTP_USER=you@example.com
+#   export NEWSRAG_SMTP_TO=you@example.com
+#   export NEWSRAG_SMTP_PASSWORD=...   (an app password)

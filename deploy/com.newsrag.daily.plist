@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd job: runs `newsrag run` every day at 06:30.
+  1. Replace /path/to/Siva-News-RAG-Daily and /Users/YOU below.
+  2. cp deploy/com.newsrag.daily.plist ~/Library/LaunchAgents/
+  3. launchctl load ~/Library/LaunchAgents/com.newsrag.daily.plist
+  Run once now to test:  launchctl start com.newsrag.daily
+  Stop scheduling:       launchctl unload ~/Library/LaunchAgents/com.newsrag.daily.plist
+  If the Mac is asleep at 06:30, launchd runs the job when it wakes.
+  Keys: put `export ...` lines in ~/.newsrag.env (chmod 600); the script below sources it.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.newsrag.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>[ -f "$HOME/.newsrag.env" ] &amp;&amp; . "$HOME/.newsrag.env"; cd /path/to/Siva-News-RAG-Daily &amp;&amp; .venv/bin/python -m newsrag --workspace "$HOME/NewsRAG/personal" run</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/YOU/NewsRAG/personal/logs/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/NewsRAG/personal/logs/launchd.log</string>
+</dict>
+</plist>
