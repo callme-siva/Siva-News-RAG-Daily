@@ -1,0 +1,38 @@
+# Shipped defaults. Never edited by the app: user changes are stored in the workspace (FR36).
+#
+# regions:    codes used to tag every item and to filter search.
+# categories: per-category relevance rules for RuleEngine. Patterns are Python regexes,
+#             matched case-insensitively, and should use word boundaries (\b) so that
+#             short terms like "ipl" do not match inside "diplomat".
+# official_domains: sources from these domains always pass the include filter.
+# sources:    added in stage 2, each one verified before it is listed here.
+
+regions:
+  - code: US
+    name: United States
+  - code: EU
+    name: Europe
+  - code: IN
+    name: India
+
+categories:
+  - name: Technology
+    include: null
+    exclude: '\b(deal of the day|discount|coupon|\d+% off|buying guide|giveaway|horoscope|recipe|wordle|crossword)\b'
+  - name: Finance
+    include: '\b(central bank|federal reserve|fed|ecb|rbi|sebi|sec|stocks?|shares|markets?|bonds?|yields?|inflation|cpi|gdp|interest rates?|repo rate|rate (cut|hike)|earnings|profit|revenue|ipo|merger|acquisition|currency|rupee|euro|dollar|crude|gold|budget|tax|fiscal|economy|banks?|banking)\b'
+    exclude: '\b(horoscope|recipe|lifestyle|celebrity|travel tips|sponsored|brand stories|wedding|fashion)\b'
+  - name: Politics
+    include: '\b(government|minister|ministry|parliament|congress|senate|lok sabha|rajya sabha|european parliament|european commission|assembly|elections?|polls|cabinet|policy|legislation|bill|supreme court|high court|president|prime minister|chancellor|diplomat\w*|bilateral|summit|treaty|defence|defense|opposition|sanctions?)\b'
+    exclude: '\b(cricket|ipl|bollywood|hollywood|box office|movie|film review|recipe|horoscope|celebrity|fashion)\b'
+
+official_domains:
+  - federalreserve.gov
+  - sec.gov
+  - ecb.europa.eu
+  - europa.eu
+  - rbi.org.in
+  - sebi.gov.in
+  - pib.gov.in
+
+sources: []
