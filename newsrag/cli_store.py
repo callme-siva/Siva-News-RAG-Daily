@@ -34,6 +34,8 @@ from newsrag.settings import Settings, load_settings
 from newsrag.sources_config import effective_config
 from newsrag.store import Store, backup_workspace, restore_workspace
 from newsrag.tools import ToolContext, tool_schemas
+from newsrag.topic import build_brief, write_brief
+from newsrag.topic import render_markdown as render_brief_markdown
 from newsrag.workspace import Workspace, WorkspaceError, open_workspace, recent_workspaces
 
 
@@ -270,6 +272,46 @@ def cmd_ui(args: argparse.Namespace) -> int:
     return subprocess.call(cmd, env=env)
 
 
+def cmd_brief(args: argparse.Namespace) -> int:
+    ws = require_workspace(args.workspace)
+    settings = load_settings(ws.root)
+    if args.mode:
+        settings.llm.mode = args.mode
+    KEYS.load_from_env()
+    setup_logging(ws.logs_dir)
+    ctx, store = _context(ws, settings)
+
+    async def run() -> int:
+        try:
+            choice = await select_engine(settings.llm, ctx.cfg, KEYS, task="chat")
+        except EngineUnavailable as exc:
+            print(f"LLM not available: {exc}")
+            return 1
+        try:
+            print(f"Writing with: {choice.engine.label} | {choice.reason}")
+            brief = await build_brief(
+                ctx,
+                args.topic,
+                regions=args.region,
+                categories=args.category,
+                days=args.days,
+                client=choice.client,
+            )
+        finally:
+            await choice.aclose()
+        print()
+        print(render_brief_markdown(brief))
+        if args.save and brief.found:
+            _, page = write_brief(brief, ws.root / "briefs")
+            print(f"Saved: {page}")
+        return 0
+
+    try:
+        return asyncio.run(run())
+    finally:
+        store.close()
+
+
 def cmd_tools(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(tool_schemas(), indent=2))
@@ -386,6 +428,14 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     p_ui = sub.add_parser("ui", help="start the web UI (Streamlit)")
     p_ui.add_argument("--port", type=int, default=8501)
 
+    p_brief = sub.add_parser("brief", help="summarise everything stored about a topic")
+    p_brief.add_argument("topic", help="topic or keywords, e.g. 'RBI interest rates'")
+    p_brief.add_argument("--days", type=int, default=30, help="how far back (default 30)")
+    p_brief.add_argument("--region", action="append", help="US, EU or IN (repeatable)")
+    p_brief.add_argument("--category", action="append", help="category (repeatable)")
+    p_brief.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
+    p_brief.add_argument("--save", action="store_true", help="save to <workspace>/briefs/")
+
     p_tools = sub.add_parser("tools", help="list agent-ready tools and their schemas")
     p_tools.add_argument("--json", action="store_true", help="print full JSON schemas")
 
@@ -418,5 +468,6 @@ HANDLERS = {
     "digest": cmd_digest,
     "chat": cmd_chat,
     "tools": cmd_tools,
+    "brief": cmd_brief,
     "ui": cmd_ui,
 }

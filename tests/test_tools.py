@@ -26,6 +26,7 @@ def test_registry_has_the_required_tools_and_flags() -> None:
         "list_sources",
         "stats",
         "compare_periods",
+        "topic_brief",
         "fetch_now",
         "cleanup",
     }

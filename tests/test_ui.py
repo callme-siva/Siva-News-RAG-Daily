@@ -103,6 +103,7 @@ def test_full_app_opens_today_with_header_and_sidebar(workspace: Path) -> None:
     [
         "today_page",
         "ask_page",
+        "topic_page",
         "browse_page",
         "fetch_page",
         "sources_page",
@@ -188,3 +189,25 @@ def test_data_verify(workspace: Path) -> None:
     next(b for b in at.button if b.label == "Verify integrity").click().run()
     assert not at.exception
     assert any("Clean" in s.value for s in at.success)
+
+
+def test_topic_brief_builds_and_saves(workspace: Path) -> None:
+    at = run_page("topic_page")
+    build = next(b for b in at.button if b.label == "Build brief")
+    assert build.disabled  # nothing typed yet
+    at.text_input[0].set_value("interest rates inflation").run()
+    next(b for b in at.button if b.label == "Build brief").click().run()
+    assert not at.exception, at.exception
+    text = " ".join(m.value for m in at.markdown)
+    assert "Overview" in text and "Timeline" in text and "Key numbers" in text
+    next(b for b in at.button if b.label == "Save to workspace").click().run()
+    assert not at.exception
+    assert list((workspace / "briefs").glob("*.html"))
+
+
+def test_topic_brief_says_when_nothing_matches(workspace: Path) -> None:
+    at = run_page("topic_page")
+    at.text_input[0].set_value("zzqx unknownterm").run()
+    next(b for b in at.button if b.label == "Build brief").click().run()
+    assert not at.exception, at.exception
+    assert any("don't have news on 'zzqx unknownterm'" in i.value for i in at.info)

@@ -72,8 +72,10 @@ After the first time, commands use the most recently opened workspace.
 ```
 - Start screen: open a recent workspace or create one in any folder.
 - Top right: text size **A / A+ / A++** and theme **Light / Dark / System**, saved per workspace.
-- **Today**: the briefing with a region filter. **Ask**: chat answered only from stored articles,
-  with sources. **Browse**: search or latest articles, with scores. **Fetch**: fetch now and run
+- **Today**: the briefing for the last 24 hours, with a region filter. **Ask**: chat answered only
+  from stored articles, with sources. **Topic brief**: type a topic and a time range (7 to 180
+  days) and get an overview, a dated timeline, how each region covered it, and key numbers, all
+  cited; download it or save it to `briefs/`. **Browse**: search or latest articles, with scores. **Fetch**: fetch now and run
   history. **Sources**: turn feeds on or off, add and check a feed, OPML import/export.
   **Data**: stats, cleanup, delete by filter, verify, rebuild index, backup and restore.
   **Settings**: LLM, keys (memory only), retrieval, sources, briefing.
@@ -85,6 +87,7 @@ After the first time, commands use the most recently opened workspace.
 | `workspace` / `recent` | Create or open a workspace / list recent ones |
 | `run [--limit N] [--no-digest]` | Fetch, process and store new articles, then write the briefing |
 | `digest [--print] [--mode rules\|llm]` | Write today's briefing from stored articles |
+| `brief "topic" [--days 30] [--region IN] [--category Finance] [--save]` | Summarise everything stored about a topic: overview, timeline, by region, key numbers |
 | `chat ["question"] [--region IN] [--category Finance] [--days 3]` | Ask; without a question it is interactive (`/region`, `/days`, `/clear`, `/quit`) |
 | `search "query" [--region] [--category] [--days] [--mode] [--no-rerank]` | Hybrid search with scores |
 | `sources [--check] [--all]` | List sources, or fetch each one and report its status |

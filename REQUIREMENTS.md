@@ -149,8 +149,18 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR42: "Back up workspace" creates a dated zip of the workspace. "Restore" imports one. Every destructive action offers a backup first.
 - FR43: The Run page shows workspace size, article count by region and category, and oldest and newest article dates.
 
+### 5.11 Topic brief
+A structured summary of everything stored about a topic over a chosen time range. Added after v1 at the user's request (the Today digest only covers the last 24 hours).
+- TB1: Input: topic or keywords, time range (default 30 days, up to 365), optional regions and categories. Available as the **Topic brief** page, `newsrag brief "topic"`, and the `topic_brief` tool.
+- TB2: Retrieval uses the same hybrid search with filters and relevance floor, one article per story. A **term-coverage filter** then keeps only articles whose title, summary and key facts mention at least half of the topic's significant words (stopwords removed, plural stems matched); the number left out is reported. Reason: with an OR keyword search, articles sharing one common word with the topic flooded the brief when tested on real news.
+- TB3: Sections: **Overview** (2-3 lines), **Timeline** (oldest first; within a day the most relevant first), **By region** (only when more than one region covered it), **Key numbers**, and **Sources** (all articles, numbered). Every line cites article numbers.
+- TB4: **Code owns dates, links and figures.** Timeline dates are the earliest cited article's date; the writer never supplies a date. All links come from the store. A line whose figures (a % value, a decimal, or any number of three or more digits) do not appear in the articles it cites is dropped. Plain one- or two-digit integers are not checked. Lines citing a non-existent article are dropped.
+- TB5: **Rules writer (no key):** overview = lead sentences of the most relevant stories; timeline = headlines; by region = top headlines per region; key numbers = sentences with figures (years alone do not count). **LLM writer:** returns JSON lines validated by TB4; any section left empty is filled from the rules writer with a note; if the call fails, the whole brief is the rules version with a note.
+- TB6: If nothing relevant is stored, the reply "I don't have news on '<topic>' ..." is produced by code and the LLM is not called.
+- TB7: Output is shown on the page, downloadable as HTML, and saved with "Save to workspace" or `--save` as Markdown, HTML and JSON in `<workspace>/briefs/`.
+
 ## 6. UI requirements (Streamlit)
-Start screen: **Open workspace** (recent list, choose folder, create new). Then pages: **Today** (digest), **Ask** (chat), **Browse** (search and filter articles), **Fetch** (fetch new news button, progress, run history), **Sources** (feed table, add/test/edit), **Data** (stats, cleanup, backup, re-index), **Settings**.
+Start screen: **Open workspace** (recent list, choose folder, create new). Then pages: **Today** (digest), **Ask** (chat), **Topic brief** (section 5.11), **Browse** (search and filter articles), **Fetch** (fetch new news button, progress, run history), **Sources** (feed table, add/test/edit), **Data** (stats, cleanup, backup, re-index), **Settings**.
 
 **Settings panel (all persisted to `settings.json`, never including keys):**
 | Group | Controls |
@@ -270,6 +280,7 @@ v1 is a **pipeline**: code decides every step and the LLM only writes text. A la
   | `list_sources(region?, category?)` | Configured sources and their status | No |
   | `stats(date_from?, date_to?)` | Counts by region, category and source | No |
   | `compare_periods(query, period_a, period_b)` | Run the same search over two date ranges and return both result sets | No |
+  | `topic_brief(topic, regions, categories, days, max_articles)` | Structured brief of stored news on a topic (rules-written; the UI and CLI upgrade it with an LLM when one is available) | No |
   | `fetch_now(regions?)` | Trigger an incremental fetch | **Yes** |
   | `cleanup(retention_days, dry_run=True)` | Preview or apply retention cleanup | **Yes** |
 - AG3: Each tool declares `changes_data: bool`. Tools that change data default to a dry run or preview.

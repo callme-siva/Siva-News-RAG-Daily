@@ -44,6 +44,7 @@ REGISTRY: dict[str, Tool] = {
         Tool("list_sources", core.list_sources, core.ListSourcesInput, False),
         Tool("stats", core.stats, core.StatsInput, False),
         Tool("compare_periods", core.compare_periods, core.ComparePeriodsInput, False),
+        Tool("topic_brief", core.topic_brief, core.TopicBriefInput, False),
         Tool("fetch_now", core.fetch_now, core.FetchNowInput, True),
         Tool("cleanup", core.cleanup, core.CleanupInput, True),
     )

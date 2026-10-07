@@ -44,6 +44,14 @@ from newsrag.sources_config import (
 )
 from newsrag.store import backup_workspace, restore_workspace
 from newsrag.tools import ToolContext
+from newsrag.topic import (
+    TopicBrief,
+    build_brief,
+    no_news_text,
+    write_brief,
+)
+from newsrag.topic import render_html as render_topic_html
+from newsrag.topic import render_markdown as render_topic_markdown
 from newsrag.ui import resources
 from newsrag.workspace import WorkspaceError
 
@@ -245,6 +253,77 @@ def _show_answer(turn: dict[str, Any]) -> None:
                 )
     for note in turn["notes"]:
         st.caption(f"Note: {note}")
+
+
+# ---------------------------------------------------------------- Topic brief
+
+
+def topic_page() -> None:
+    c = ctx()
+    st.header("Topic brief")
+    muted(
+        "A summary of everything stored about a topic: overview, timeline, how each region "
+        "covered it, and key numbers. Dates and links come from the stored articles."
+    )
+    regions, categories = regions_and_categories(c)
+    t1, t2 = st.columns([3, 1], vertical_alignment="bottom")
+    topic = t1.text_input("Topic or keywords", placeholder="RBI interest rates")
+    days = t2.select_slider("Time range (days)", [7, 14, 30, 60, 90, 180], value=30)
+    f1, f2 = st.columns(2)
+    sel_regions = f1.multiselect("Regions", regions, placeholder="All regions")
+    sel_cats = f2.multiselect("Categories", categories, placeholder="All categories")
+    if st.button(
+        "Build brief", type="primary", icon=":material/summarize:", disabled=not topic.strip()
+    ):
+        if not with_models(c):
+            return
+
+        async def go() -> TopicBrief:
+            try:
+                choice = await select_engine(c.settings.llm, c.cfg, KEYS, task="chat")
+            except EngineUnavailable as exc:
+                st.error(f"LLM not available: {exc}")
+                raise
+            try:
+                return await build_brief(
+                    c,
+                    topic.strip(),
+                    regions=sel_regions or None,
+                    categories=sel_cats or None,
+                    days=days,
+                    client=choice.client,
+                )
+            finally:
+                await choice.aclose()
+
+        with st.spinner("Searching and writing the brief..."):
+            try:
+                st.session_state.topic_brief = asyncio.run(go())
+            except EngineUnavailable:
+                return
+    brief: TopicBrief | None = st.session_state.get("topic_brief")
+    if brief is None:
+        return
+    if not brief.found:
+        st.info(no_news_text(brief))
+        return
+    kind = "LLM" if brief.engine == "llm" else "Template"
+    st.markdown(
+        badge(f"{kind} · {len(brief.articles)} articles", ok=brief.engine == "llm"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(render_topic_markdown(brief).split("\n", 3)[3])
+    d1, d2 = st.columns(2)
+    d1.download_button(
+        "Download HTML",
+        render_topic_html(brief),
+        file_name="topic-brief.html",
+        mime="text/html",
+        icon=":material/download:",
+    )
+    if d2.button("Save to workspace", icon=":material/save:"):
+        _, page = write_brief(brief, c.workspace.root / "briefs")
+        st.success(f"Saved: {page.name}")
 
 
 # ---------------------------------------------------------------- Browse
