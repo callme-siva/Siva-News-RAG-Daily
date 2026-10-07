@@ -17,7 +17,7 @@ This document explains **how the app is put together, which tools it uses, why e
 ```
                        ┌──────────────────────── Workspace folder ────────────────────────┐
                        │  newsrag.db (SQLite: articles, chunks, FTS5, runs, sources)      │
-                       │  vectors/   (Chroma or LanceDB)    digests/   backups/   settings │
+                       │  (vectors are BLOBs in the same SQLite file)  digests/  backups/   │
                        └──────────────────────────────────────────────────────────────────┘
                                    ▲                          ▲
  INGEST (on demand)                │                          │         SERVE
@@ -41,7 +41,7 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Sources | Fetch items from one kind of source | `fetch(since) -> list[Item]` |
 | Pipeline | Normalise, filter, dedupe, rank, chunk | Pure functions, fully unit-tested |
 | Engines | Turn items into summaries, answers, digests | `Engine.process / answer / briefing` |
-| Store | Persist items, chunks, keyword index, vectors, runs | One store class owning SQLite + vector index together |
+| Store | Persist items, chunks, keyword index, vectors, runs | One `Store` class over one SQLite file |
 | Retrieval | Hybrid search, fusion, rerank, grouping | `search_news(...)` tool |
 | Tools | Typed operations for UI, CLI, agent | Registry with JSON schemas |
 | UI / CLI | Present and trigger; no business logic | Streamlit pages, `python -m newsrag` |
@@ -92,7 +92,7 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Config | YAML (`pyyaml`) | Human-editable | Colleagues add feeds without code | JSON (harder to hand-edit) |
 | Database | SQLite | Built in, single file, zero setup, FTS5 included | Portable workspace, backups are a file copy | Postgres (needs a server) |
 | Keyword search | SQLite FTS5 | Already in SQLite, BM25 ranking | Hybrid search at no extra cost | Elasticsearch, Whoosh |
-| Vector store | Chroma or LanceDB | Embedded, runs in a folder, metadata filters | No server, no account | Qdrant (server), FAISS (no metadata filters) |
+| Vector store | Vectors as float32 BLOBs in the same SQLite file; brute-force cosine in `numpy` after SQL metadata filters | One transaction covers row, chunks, keyword index and vectors; no sync problem; no extra dependency | Crash-safe ingest, one-file backups, filters applied before search | Chroma, LanceDB (considered first; a second store needs cross-store consistency), Qdrant (server), FAISS (no metadata filters) |
 | Embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) or Ollama (`nomic-embed-text`) | Free, local, small, good quality | Works offline with zero keys | Hosted embeddings (key, cost, data leaves machine) |
 | Rerank | `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) | Small, fast, well-known reranker; same library as embeddings | Better precision with no new dependency | Hosted rerank APIs (key, cost) |
 | Rule-based NLP | Standard-library extractive rules | Lead-sentence summaries, numeric key facts, capitalisation-based entities; nothing invented | Useful output in zero-key mode with no model downloads | `sumy` TextRank, `spaCy` (heavier; can be added behind the same `Engine` interface) |
@@ -100,6 +100,19 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Local LLMs | Ollama, OpenAI-compatible local servers via `httpx` | Popular, simple, no key, private | Full offline mode with LLM quality | Hard-coding one runtime |
 | Quality | `pytest`, `ruff`, `mypy`, `pre-commit` | Standard, fast | Catches regressions; consistent code across colleagues | — |
 | Scheduling (optional) | cron, launchd, GitHub Actions | OS-native, no extra service | Automate later without code changes | Always-on scheduler process |
+
+### 5.1 Decision: vectors in SQLite (changed during stage 4)
+The first plan was Chroma or LanceDB next to SQLite. During the build we moved vectors into
+the same SQLite file.
+
+- **Why:** an article's row, chunks, FTS5 rows and vectors are now written in one SQLite
+  transaction. A crash or error rolls back all of them, so the indexes cannot disagree
+  (REQUIREMENTS DD4). With two stores this needs compensating deletes and repair logic.
+- **Scale check:** 90 days of news is roughly 100k chunks x 384 floats, about 150 MB.
+  Filtering in SQL and scoring the remaining vectors in numpy takes milliseconds.
+- **Trade-off:** brute-force search is linear in the number of chunks. Past a few million
+  chunks, an approximate index (for example `sqlite-vec`, LanceDB or Qdrant) would be needed.
+  `Store` hides this, so the change would be local.
 
 ## 6. Hybrid engine (rules or LLM)
 ```
@@ -115,7 +128,7 @@ startup ─► settings.mode? ─► rules ────────────�
 | `items` | One row per article: headline, URL, source, region, category, dates, summary, engine | Source of truth for Browse, digest, cleanup |
 | `seen_urls` | URL and first-seen date | Idempotent ingest; kept after cleanup so old items are not re-fetched |
 | `chunks` + `chunks_fts` | Chunk text with header, FTS5 index | Keyword search and citations |
-| Vector index | Chunk embeddings + metadata | Semantic search with filters |
+| `embeddings` | Chunk vectors (float32 BLOB) keyed by `chunk_id` | Semantic search; deleted with their chunk |
 | `runs`, `run_errors` | Per-fetch summary and failures | Fetch page history, troubleshooting |
 | `sources` | User-edited sources (defaults stay in `config.yaml`) | Safe editing, restore defaults |
 | `series` (later) | `series, date, value, unit, source` | Numeric data such as gold rates, answered with SQL |

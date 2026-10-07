@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 SCHEMA_VERSION = 1
 META_FILE = "workspace.json"
-SUBDIRS = ("vectors", "digests", "backups", "logs")
+SUBDIRS = ("digests", "backups", "logs")
 MAX_RECENT = 10
 
 
@@ -45,10 +45,6 @@ class Workspace:
         return self.root / "newsrag.db"
 
     @property
-    def vectors_dir(self) -> Path:
-        return self.root / "vectors"
-
-    @property
     def digests_dir(self) -> Path:
         return self.root / "digests"
 
@@ -62,6 +58,11 @@ class Workspace:
 
     def save_meta(self) -> None:
         (self.root / META_FILE).write_text(self.meta.model_dump_json(indent=2), "utf-8")
+
+    def set_embedding_model(self, model: str) -> None:
+        """Record a new embedding model after the index has been rebuilt with it."""
+        self.meta.embedding_model = model
+        self.save_meta()
 
     def check_embedding_model(self, model: str) -> None:
         """Record the embedding model on first use; refuse to mix models later (FR29)."""

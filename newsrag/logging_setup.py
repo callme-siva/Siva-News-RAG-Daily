@@ -13,9 +13,13 @@ _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
 def setup_logging(
-    logs_dir: Path | None = None, level: int = logging.INFO, store: KeyStore = KEYS
+    logs_dir: Path | None = None,
+    level: int = logging.INFO,
+    store: KeyStore = KEYS,
+    console_level: int = logging.WARNING,
 ) -> logging.Logger:
-    """Configure the `newsrag` logger. Every handler gets the redacting filter."""
+    """Configure the `newsrag` logger. Every handler gets the redacting filter.
+    The file gets `level` and above; the console only gets `console_level` and above."""
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(level)
     logger.propagate = False
@@ -23,7 +27,9 @@ def setup_logging(
         logger.removeHandler(handler)
         handler.close()
 
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    console = logging.StreamHandler()
+    console.setLevel(console_level)
+    handlers: list[logging.Handler] = [console]
     if logs_dir is not None:
         logs_dir.mkdir(parents=True, exist_ok=True)
         handlers.append(
