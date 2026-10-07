@@ -25,6 +25,7 @@ TRACKING_PARAMS = frozenset(
         "ncid",
         "spm",
         "smid",
+        "maca",  # DW feeds
     }
 )
 TRACKING_PREFIXES = ("utm_",)

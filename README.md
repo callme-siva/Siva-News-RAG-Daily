@@ -8,10 +8,13 @@ LLM automatically when one is available, including local models via Ollama.
 - Prompt to rebuild it with Claude Code: [PROMPT.md](PROMPT.md)
 
 ## Status
-Stage 3 of 7: skeleton, sources and pipeline (stages 1-2), plus the two engines. `RuleEngine`
-works with no key; `LLMEngine` uses Ollama, a local OpenAI-compatible server, Claude, Gemini or
-an OpenAI-compatible API, validates every reply, and falls back to rules per item. Storage,
-search, digest, chat and UI arrive in later stages.
+Stage 4 of 7: stages 1-3 plus storage and search. `newsrag run` fetches, processes and stores
+new articles in the workspace (one SQLite file: rows, keyword index and vectors). Duplicates are
+blocked four ways (URL identity, seen URLs, cross-day near-duplicates, idempotent writes).
+`newsrag search` runs hybrid retrieval: filters, keyword (FTS5) + semantic search, rank fusion,
+local cross-encoder rerank, grouping by article. Digest, chat and UI arrive in later stages.
+
+The first `run` or `search` downloads two small local models (about 90 MB each) from Hugging Face.
 
 ## LLM options (all optional)
 - **Local, no key:** install [Ollama](https://ollama.com), pull a model, and leave the provider
@@ -37,6 +40,10 @@ uv pip install -e ".[dev]"
 .venv/bin/python -m newsrag sources --check    # fetch each one live and report status
 .venv/bin/python -m newsrag fetch --show 20    # dry run: fetch, filter, dedupe, rank
 .venv/bin/python -m newsrag process --limit 5  # dry run: fetch, then summarise and tag
+.venv/bin/python -m newsrag run                # fetch, process and store new articles
+.venv/bin/python -m newsrag search "RBI rate hike" --region IN --days 7
+.venv/bin/python -m newsrag data stats         # also: cleanup [--apply], verify [--repair],
+                                               #       reindex, compact, backup, restore PATH
 ```
 
 ## Sources

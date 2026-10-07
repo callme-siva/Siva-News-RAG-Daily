@@ -17,6 +17,7 @@ CANONICAL = "https://example.com/news/story-1"
         "https://example.com/news/story-1#comments",
         "https://example.com/news/story-1?utm_source=x&utm_medium=y",
         "https://example.com:443/news/story-1?fbclid=abc&ref=home",
+        "https://example.com/news/story-1?maca=en-rss-en-all-1573-rdf",
         "  https://www.example.com/news/story-1/?gclid=1#top  ",
     ],
 )

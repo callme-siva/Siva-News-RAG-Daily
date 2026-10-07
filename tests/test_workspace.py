@@ -79,5 +79,5 @@ def test_cli_writes_only_inside_workspace(
 
 
 def test_cli_unbuilt_command(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["run"]) == 2
+    assert main(["chat"]) == 2
     assert "not built yet" in capsys.readouterr().out

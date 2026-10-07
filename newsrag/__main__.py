@@ -7,7 +7,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from newsrag import __version__
+from newsrag import __version__, cli_store
 from newsrag.config import load_config
 from newsrag.engines import EngineUnavailable, process_all, select_engine
 from newsrag.logging_setup import setup_logging
@@ -22,7 +22,7 @@ from newsrag.workspace import (
     remember_workspace,
 )
 
-NOT_BUILT = {"run": 4, "chat": 5, "ui": 6}
+NOT_BUILT = {"chat": 5, "ui": 6}
 
 
 def _resolve_workspace(arg: str | None) -> Path | None:
@@ -96,7 +96,7 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         f"off-topic {f.not_relevant} | merged duplicates {report.merged_duplicates} | "
         f"over cap {report.capped} | kept {len(report.items)}"
     )
-    print("(dry run: nothing is stored until stage 4)")
+    print("(dry run: use `newsrag run` to store)")
     for item in report.items[: args.show]:
         also = f" (+{len(item.also_reported_by)})" if item.also_reported_by else ""
         when = item.published_at.strftime("%d %b %H:%M")
@@ -134,7 +134,7 @@ def _cmd_process(args: argparse.Namespace) -> int:
             names = p.entities.flat()
             if names:
                 print(f"  entities: {', '.join(names[:8])}")
-        print("\n(dry run: nothing is stored until stage 4)")
+        print("\n(dry run: use `newsrag run` to store)")
         return 0
 
     return asyncio.run(run())
@@ -162,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_proc = sub.add_parser("process", help="fetch then summarise and tag items (dry run)")
     p_proc.add_argument("--limit", type=int, default=5, help="how many items to process")
     p_proc.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
+    cli_store.add_parsers(sub)
     for name in NOT_BUILT:
         sub.add_parser(name, help=f"(available from stage {NOT_BUILT[name]})")
     return parser
@@ -176,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         "sources": _cmd_sources,
         "fetch": _cmd_fetch,
         "process": _cmd_process,
+        **cli_store.HANDLERS,
     }
     if args.command in NOT_BUILT:
         print(f"'{args.command}' is not built yet (stage {NOT_BUILT[args.command]}).")

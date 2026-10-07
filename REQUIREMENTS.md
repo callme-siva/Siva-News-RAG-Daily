@@ -97,7 +97,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR12: SQLite holds articles, seen URLs, run history and errors.
 - FR13: Chunk text with configurable `chunk_size` (characters, default 1600) and `chunk_overlap` (default 200). Each chunk repeats headline, source, date, region, category and URL.
 - FR14: Embed chunks with a local `sentence-transformers` model by default. A hosted embedding model is optional.
-- FR15: Store vectors locally (Chroma or LanceDB) with metadata (`region`, `category`, `published_ts`, `source`).
+- FR15: Store vectors locally with metadata (`region`, `category`, `published_ts`, `source`). v1 keeps them in the workspace SQLite file (float32 BLOBs, searched with numpy), so rows, keyword index and vectors share one transaction. See ARCHITECTURE.md 5.1.
 - FR16: Retrieval is **hybrid search with reranking**, in this order:
   1. **Filter first:** region, category and date range are applied inside both searches, not afterwards.
   2. **Keyword search:** SQLite FTS5 (BM25) over chunk text, returning `candidates_k` results (default 30).
@@ -174,7 +174,7 @@ Every control has a one-line help tooltip and a "Reset to defaults" button.
 | Article text (optional) | `trafilatura` |
 | Dedupe | Jaccard overlap of significant headline words (standard library, no dependency) |
 | Models and validation | `pydantic` v2, `pyyaml` |
-| Storage | `sqlite3` (stdlib), `chromadb` or `lancedb` |
+| Storage | `sqlite3` (stdlib): rows, FTS5 keyword index and vectors in one file; `numpy` for vector search |
 | Local embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) |
 | Keyword search | SQLite FTS5 (built into Python's `sqlite3`) |
 | Reranking | `sentence-transformers` `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) |
@@ -232,6 +232,8 @@ newsrag/
 - Free APIs have daily quotas and may change terms. GDELT throttles to one request per 5 seconds and may reject bursts.
 - Feed URLs change over time and need occasional maintenance.
 - Local models are slower and less reliable at structured output than hosted ones. Quality depends on the model and hardware.
+- `region` is the region of the **outlet's feed**, not of the story: a US outlet's article about India is tagged US. Region filters therefore narrow by outlet. Story-level region tagging is a later improvement.
+- Changing URL-normalisation rules (for example adding a tracking parameter) can make an already-stored article look new once; the cross-day near-duplicate check (DD3) merges it.
 
 ## 11. Reusing this as a base for other daily-data apps
 The design is meant to be reused for other "collect daily, store, ask questions" tools, such as call transcripts or gold rates. To make that easy, build v1 with these seams:
