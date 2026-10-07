@@ -254,3 +254,14 @@ def test_select_check_failure_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
     _patch_build(monkeypatch, {"ollama": bad})
     choice = asyncio.run(select_engine(LLMSettings(mode="auto"), CFG, KeyStore()))
     assert choice.engine.name == EngineName.RULES and bad.closed
+
+
+def test_split_sentences_keeps_abbreviations() -> None:
+    from newsrag.engines.rules import split_sentences
+
+    text = "The U.S. Supreme Court will hear the case. Mr. Smith said yes. Done."
+    assert split_sentences(text) == [
+        "The U.S. Supreme Court will hear the case.",
+        "Mr. Smith said yes.",
+        "Done.",
+    ]

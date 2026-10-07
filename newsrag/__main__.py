@@ -22,7 +22,7 @@ from newsrag.workspace import (
     remember_workspace,
 )
 
-NOT_BUILT = {"chat": 5, "ui": 6}
+NOT_BUILT = {"ui": 6}
 
 
 def _resolve_workspace(arg: str | None) -> Path | None:

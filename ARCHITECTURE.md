@@ -53,7 +53,8 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 3. **Semantic search** (vector similarity), top 30.
 4. **Reciprocal rank fusion** merges the two lists by rank position.
 5. **Cross-encoder rerank** re-scores the fused candidates against the question.
-6. **Group by article**, at most 2 chunks each, cut to `top_k` (8).
+6. **Relevance floor:** drop candidates that only the vector search found with similarity below `min_similarity` (0.30). Without it, any question returns the nearest articles and "no news on that" can never trigger.
+7. **Group by article**, at most 2 chunks each, cut to `top_k` (8).
 
 ### 4.2 Why this design
 | Choice | Why | Benefit |
@@ -65,6 +66,8 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | Cross-encoder rerank | Reads question and passage together, more accurate than either search alone | Better top results, so better answers and digests; runs locally |
 | Group by article | Long articles produce many similar chunks | Answers cite more distinct sources |
 | Chunk headers (headline, date, source, URL inside each chunk) | Chunks are retrieved alone | Every chunk is citable and dateable by itself |
+| Relevance floor on similarity, not rerank | Vector search always returns neighbours; the cross-encoder scores relevant passages near zero for short keyword queries (seen live) | "No news on that" is decided by code, and relevant results for terse queries are not lost |
+| Code-validated citations and code-built links (chat and digest) | Models can cite the wrong number or invent a URL | Every link shown came from the store; uncited answers fall back to the article list |
 
 ### 4.3 Alternatives considered
 | Option | Why not (for v1) |

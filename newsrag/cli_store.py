@@ -1,23 +1,36 @@
-"""CLI commands that use the workspace store: run, search, data (REQUIREMENTS FR23-FR25,
-FR38-FR43, FR16)."""
+"""CLI commands that use the workspace store: run, search, data, digest, chat, tools
+(REQUIREMENTS FR16-FR25, FR38-FR43, section 12)."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from newsrag.briefing import (
+    Digest,
+    EmailNotConfigured,
+    llm_digest,
+    render_markdown,
+    rule_digest,
+    select_articles,
+    send_email,
+    write_digest,
+)
+from newsrag.chat import ChatFilters, ChatSession, ask, format_answer
 from newsrag.config import load_config
 from newsrag.embeddings import CrossEncoderReranker, make_embedder
 from newsrag.engines import EngineUnavailable, select_engine
-from newsrag.ingest import ingest, reindex
+from newsrag.ingest import reindex
 from newsrag.logging_setup import setup_logging
-from newsrag.pipeline import collect
+from newsrag.runner import run_ingest
 from newsrag.search import SearchFilters, search
 from newsrag.secrets import KEYS
 from newsrag.settings import Settings, load_settings
 from newsrag.store import Store, backup_workspace, restore_workspace
+from newsrag.tools import ToolContext, tool_schemas
 from newsrag.workspace import Workspace, WorkspaceError, open_workspace, recent_workspaces
 
 
@@ -39,86 +52,205 @@ def _embedder_for(settings: Settings, ws: Workspace):  # type: ignore[no-untyped
     return embedder
 
 
-def catchup_hours(settings: Settings, last_run: datetime | None, now: datetime) -> int:
-    """FR25: look back to the last run, at least max_age_hours, at most max_catchup_days."""
-    base = settings.sources.max_age_hours
-    if last_run is None:
+def _context(ws: Workspace, settings: Settings) -> tuple[ToolContext, Store]:
+    store = Store(ws.db_path)
+    ctx = ToolContext(
+        workspace=ws,
+        store=store,
+        cfg=load_config(),
+        settings=settings,
+        keys=KEYS,
+        _embedder=_embedder_for(settings, ws),
+    )
+    return ctx, store
+
+
+async def _make_digest(ctx: ToolContext, now: datetime) -> Digest:
+    """Select articles, write with the LLM if available (template otherwise), save files."""
+    s = ctx.settings
+    articles, start = select_articles(
+        ctx.store, ctx.cfg, now=now, per_group=s.briefing.items_per_category
+    )
+    base = rule_digest(articles, ctx.cfg, s.sources.regions, now=now, start=start)
+    choice = await select_engine(s.llm, ctx.cfg, ctx.keys, task="digest")
+    try:
+        if choice.client is not None:
+            return await llm_digest(choice.client, base, s.briefing, ctx.keys)
         return base
-    since = int((now - last_run).total_seconds() // 3600) + 1
-    return max(base, min(since, settings.sources.max_catchup_days * 24))
+    finally:
+        await choice.aclose()
+
+
+def _publish_digest(ctx: ToolContext, digest: Digest) -> None:
+    _, page = write_digest(digest, ctx.workspace.digests_dir)
+    print(f"Digest ({digest.writer}, {len(digest.articles)} articles): {page}")
+    if ctx.settings.briefing.email_enabled:
+        try:
+            print(f"Emailed to {send_email(digest, ctx.keys)}")
+        except EmailNotConfigured as exc:
+            print(f"Email not sent: {exc}")
+        except OSError as exc:
+            print(f"Email failed: {KEYS.redact(str(exc))}")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     ws = require_workspace(args.workspace)
     settings = load_settings(ws.root)
-    cfg = load_config()
     KEYS.load_from_env()
     log = setup_logging(ws.logs_dir)
-    embedder = _embedder_for(settings, ws)
+    ctx, store = _context(ws, settings)
+
+    def progress(done: int, total: int) -> None:
+        print(f"\r  processed {done}/{total}", end="", flush=True)
 
     async def run() -> int:
-        started = datetime.now(UTC)
-        with Store(ws.db_path) as store:
-            hours = catchup_hours(settings, store.last_run(), started)
-            if hours > settings.sources.max_age_hours:
-                print(f"Catching up: looking back {hours} hours since the last run")
-            fetch_settings = settings.model_copy(deep=True)
-            fetch_settings.sources.max_age_hours = hours
-            report = await collect(cfg, fetch_settings, KEYS, now=started)
-            items = report.items[: args.limit] if args.limit else report.items
-            try:
-                choice = await select_engine(settings.llm, cfg, KEYS, task="processing")
-            except EngineUnavailable as exc:
-                print(f"LLM not available: {exc}")
-                return 1
-            print(f"Engine: {choice.engine.label} | {choice.reason}")
-
-            def progress(done: int, total: int) -> None:
-                print(f"\r  processed {done}/{total}", end="", flush=True)
-
-            try:
-                result = await ingest(
-                    items,
-                    store,
-                    choice.engine,
-                    embedder,
-                    settings,
-                    KEYS,
-                    now=started,
-                    on_progress=progress,
-                )
-            finally:
-                await choice.aclose()
-            print()
-            finished = datetime.now(UTC)
-            failed_sources = [s.source for s in report.sources if s.status == "error"]
-            summary = {
-                "fetched": report.fetched,
-                "kept_after_filters": len(report.items),
-                "processed_limit": args.limit,
-                "engine": choice.engine.label,
-                "engine_reason": choice.reason,
-                "failed_sources": failed_sources,
-                **result.model_dump(),
-            }
-            store.record_run(started, finished, summary)
-            log.info("Run finished: %s", {k: v for k, v in summary.items() if k != "errors"})
-            print(
-                f"New {result.new} | skipped as seen {result.skipped_seen} | merged duplicates "
-                f"{result.merged_duplicate} | updated {result.updated} | not relevant "
-                f"{result.irrelevant} | failed {result.failed}"
+        try:
+            outcome = await run_ingest(
+                store,
+                ctx.cfg,
+                settings,
+                KEYS,
+                ctx.embedder,
+                limit=args.limit,
+                on_progress=progress,
             )
-            if result.by_engine:
-                print("Written by: " + ", ".join(f"{k} {v}" for k, v in result.by_engine.items()))
-            if failed_sources:
-                print("Sources with errors: " + ", ".join(failed_sources))
-            if settings.data.auto_cleanup and settings.data.retention_days:
-                c = store.cleanup(settings.data.retention_days, now=finished, apply=True)
-                if c.items:
-                    print(f"Auto cleanup removed {c.items} items older than {c.cutoff.date()}")
+        except EngineUnavailable as exc:
+            print(f"LLM not available: {exc}")
+            return 1
+        print()
+        r = outcome.ingest
+        if outcome.lookback_hours > settings.sources.max_age_hours:
+            print(f"Caught up: looked back {outcome.lookback_hours} hours since the last run")
+        print(f"Engine: {outcome.engine} | {outcome.engine_reason}")
+        print(
+            f"New {r.new} | skipped as seen {r.skipped_seen} | merged duplicates "
+            f"{r.merged_duplicate} | updated {r.updated} | not relevant {r.irrelevant} | "
+            f"failed {r.failed}"
+        )
+        if r.by_engine:
+            print("Written by: " + ", ".join(f"{k} {v}" for k, v in r.by_engine.items()))
+        if outcome.failed_sources:
+            print("Sources with errors: " + ", ".join(outcome.failed_sources))
+        if outcome.auto_cleanup_removed:
+            print(f"Auto cleanup removed {outcome.auto_cleanup_removed} old items")
+        log.info("Run finished: new=%d failed=%d", r.new, r.failed)
+        if not args.no_digest:
+            _publish_digest(ctx, await _make_digest(ctx, datetime.now(UTC)))
         return 0
 
-    return asyncio.run(run())
+    try:
+        return asyncio.run(run())
+    finally:
+        store.close()
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    ws = require_workspace(args.workspace)
+    settings = load_settings(ws.root)
+    if args.mode:
+        settings.llm.mode = args.mode
+    KEYS.load_from_env()
+    setup_logging(ws.logs_dir)
+    ctx, store = _context(ws, settings)
+    try:
+        digest = asyncio.run(_make_digest(ctx, datetime.now(UTC)))
+        _publish_digest(ctx, digest)
+        if args.print:
+            print()
+            print(render_markdown(digest))
+    finally:
+        store.close()
+    return 0
+
+
+CHAT_HELP = """Commands: /region IN [US EU] | /category Finance [...] | /days N
+          /all (clear filters) | /clear (forget conversation) | /quit"""
+
+
+def _chat_command(line: str, session: ChatSession) -> str | None:
+    parts = line.split()
+    cmd, rest = parts[0].lower(), parts[1:]
+    f = session.filters
+    if cmd in ("/quit", "/exit"):
+        return "quit"
+    if cmd == "/region":
+        f.regions = [r.upper() for r in rest] or None
+    elif cmd == "/category":
+        f.categories = [c.capitalize() for c in rest] or None
+    elif cmd == "/days" and rest and rest[0].isdigit():
+        f.days = max(1, int(rest[0]))
+    elif cmd == "/all":
+        session.filters = ChatFilters()
+    elif cmd == "/clear":
+        session.clear()
+    else:
+        return CHAT_HELP
+    return f"Filters: {session.filters.describe()}"
+
+
+def cmd_chat(args: argparse.Namespace) -> int:
+    ws = require_workspace(args.workspace)
+    settings = load_settings(ws.root)
+    if args.mode:
+        settings.llm.mode = args.mode
+    KEYS.load_from_env()
+    setup_logging(ws.logs_dir)
+    ctx, store = _context(ws, settings)
+    session = ChatSession(
+        memory_turns=settings.retrieval.memory_turns,
+        filters=ChatFilters(regions=args.region, categories=args.category, days=args.days),
+    )
+
+    async def run() -> int:
+        try:
+            choice = await select_engine(settings.llm, ctx.cfg, KEYS, task="chat")
+        except EngineUnavailable as exc:
+            print(f"LLM not available: {exc}")
+            return 1
+        try:
+            print(f"Answering with: {choice.engine.label} | {choice.reason}")
+            questions = [args.question] if args.question else None
+            if questions is None:
+                print(CHAT_HELP)
+            while True:
+                if questions is not None:
+                    if not questions:
+                        break
+                    q = questions.pop(0)
+                else:
+                    try:
+                        q = input("\nYou> ").strip()
+                    except EOFError:
+                        break
+                if not q:
+                    continue
+                if q.startswith("/"):
+                    msg = _chat_command(q, session)
+                    if msg == "quit":
+                        break
+                    print(msg)
+                    continue
+                answer = await ask(ctx, session, q, choice.client, date.today())
+                print("\n" + format_answer(answer))
+        finally:
+            await choice.aclose()
+        return 0
+
+    try:
+        return asyncio.run(run())
+    finally:
+        store.close()
+
+
+def cmd_tools(args: argparse.Namespace) -> int:
+    if args.json:
+        print(json.dumps(tool_schemas(), indent=2))
+        return 0
+    for t in tool_schemas():
+        flag = "changes data" if t["changes_data"] else "read-only"
+        params = ", ".join(t["input_schema"].get("properties", {}))
+        print(f"{t['name']:<16} [{flag}] {t['description']}\n{'':<16} params: {params}")
+    return 0
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -210,6 +342,21 @@ def cmd_data(args: argparse.Namespace) -> int:
 def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p_run = sub.add_parser("run", help="fetch, process and store new items in the workspace")
     p_run.add_argument("--limit", type=int, default=0, help="process at most N items (0 = all)")
+    p_run.add_argument("--no-digest", action="store_true", help="skip writing the digest")
+
+    p_dig = sub.add_parser("digest", help="write today's briefing from stored articles")
+    p_dig.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
+    p_dig.add_argument("--print", action="store_true", help="also print the Markdown")
+
+    p_chat = sub.add_parser("chat", help="ask questions about stored news (grounded, cited)")
+    p_chat.add_argument("question", nargs="?", help="ask one question and exit")
+    p_chat.add_argument("--region", action="append", help="US, EU or IN (repeatable)")
+    p_chat.add_argument("--category", action="append", help="category (repeatable)")
+    p_chat.add_argument("--days", type=int, default=7, help="time range in days (default 7)")
+    p_chat.add_argument("--mode", choices=["auto", "rules", "llm"], help="override engine mode")
+
+    p_tools = sub.add_parser("tools", help="list agent-ready tools and their schemas")
+    p_tools.add_argument("--json", action="store_true", help="print full JSON schemas")
 
     p_search = sub.add_parser("search", help="hybrid search over stored items")
     p_search.add_argument("query")
@@ -233,4 +380,11 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     p_data.add_argument("--repair", action="store_true", help="verify: fix what is found")
 
 
-HANDLERS = {"run": cmd_run, "search": cmd_search, "data": cmd_data}
+HANDLERS = {
+    "run": cmd_run,
+    "search": cmd_search,
+    "data": cmd_data,
+    "digest": cmd_digest,
+    "chat": cmd_chat,
+    "tools": cmd_tools,
+}

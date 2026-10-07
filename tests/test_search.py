@@ -188,3 +188,22 @@ def test_min_score_drops_weak_reranked_hits(store: Store) -> None:
         FakeReranker(),
     )
     assert all((h.rerank_score or 0) >= 0.99 for h in res.hits)
+
+
+def test_relevance_floor_drops_unrelated_semantic_matches(store: Store) -> None:
+    """Vector search always returns neighbours; unrelated ones must not reach the reader."""
+    res = search(store, "zzqx unknownterm", SearchFilters(), _settings(), FakeEmbedder(), None)
+    assert res.hits == [] and any("relevant enough" in n for n in res.notes)
+    loose = search(
+        store,
+        "zzqx unknownterm",
+        SearchFilters(),
+        _settings(min_similarity=0.0, rerank=False),
+        FakeEmbedder(),
+        None,
+    )
+    assert loose.hits  # with the floor off, neighbours come back
+    ok = search(store, "interest rates", SearchFilters(), _settings(), FakeEmbedder(), None)
+    assert ok.hits and all(
+        "keyword" in h.found_by or (h.semantic_score or 0) >= 0.30 for h in ok.hits
+    )

@@ -379,6 +379,42 @@ class Store:
         row = self._conn.execute("SELECT MAX(finished_ts) AS ts FROM runs").fetchone()
         return None if row["ts"] is None else datetime.fromtimestamp(row["ts"], tz=UTC)
 
+    def last_run_summary(self) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT summary FROM runs ORDER BY finished_ts DESC, run_id DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else dict(json.loads(row["summary"]))
+
+    def counts(self, from_ts: int | None, to_ts: int | None) -> dict[str, Any]:
+        where, params = Filters(from_ts=from_ts, to_ts=to_ts).sql("i")
+
+        def group(col: str) -> dict[str, int]:
+            rows = self._conn.execute(
+                f"SELECT {col} AS k, COUNT(*) AS n FROM items i WHERE {where} "
+                f"GROUP BY {col} ORDER BY n DESC, k",
+                params,
+            )
+            return {r["k"]: r["n"] for r in rows}
+
+        total = self._conn.execute(f"SELECT COUNT(*) FROM items i WHERE {where}", params)
+        return {
+            "total": total.fetchone()[0],
+            "by_region": group("region"),
+            "by_category": group("category"),
+            "by_source": group("source"),
+            "by_engine": group("engine"),
+        }
+
+    def recent_items(self, from_ts: int, to_ts: int) -> list[dict[str, Any]]:
+        """Stored items published in [from_ts, to_ts], newest first (for the digest)."""
+        rows = self._conn.execute(
+            """SELECT item_id, title, url, source, region, category, published_ts, summary,
+                      key_facts, also_reported_by, engine
+               FROM items WHERE published_ts BETWEEN ? AND ? ORDER BY published_ts DESC""",
+            (from_ts, to_ts),
+        )
+        return [dict(r) for r in rows]
+
     # ---------- reads for search ----------
 
     def keyword_candidates(self, query: str, filters: Filters, limit: int) -> list[str]:
