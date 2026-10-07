@@ -127,14 +127,17 @@ def rules_answer(question: str, result: SearchResult, filters: ChatFilters) -> C
             notes=list(result.notes),
         )
     hits = _dedupe_hits(result.hits)
-    lines = [f"Here is what I found for {filters.describe()} (no LLM; article summaries):", ""]
+    # One paragraph per article; "  \n" is a Markdown line break, so this reads well both
+    # in the terminal and in the UI.
+    lines = [f"Here is what I found for {filters.describe()} (no LLM; article summaries):"]
     for n, h in enumerate(hits, start=1):
-        lines.append(f"[{n}] {h.title} ({h.source}, {h.published_date})")
+        entry = f"[{n}] {h.title} ({h.source}, {h.published_date})"
         if h.summary and h.summary != h.title:
-            lines.append(f"    {h.summary[:300]}")
+            entry += f"  \n{h.summary[:300]}"
+        lines.append(entry)
     return ChatAnswer(
         question=question,
-        text="\n".join(lines),
+        text="\n\n".join(lines),
         sources=[_source(n, h) for n, h in enumerate(hits, start=1)],
         engine="rules",
         found=True,

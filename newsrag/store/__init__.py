@@ -23,6 +23,19 @@ from newsrag.store.schema import SCHEMA, SCHEMA_VERSION
 
 _FTS_TOKEN = re.compile(r"[\w][\w.%$'-]*", re.UNICODE)
 
+# Question words and function words. Joined with OR they would match almost every article,
+# which also defeats the relevance floor (a keyword match counts as relevant).
+STOPWORDS = frozenset(
+    """a about above after again against all am an and any are as at be because been before being
+    below between both but by can could did do does doing down during each few for from further
+    had has have having he her here hers herself him himself his how i if in into is it its
+    itself just me more most my myself no nor not now of off on once only or other our ours out
+    over own same she should so some such than that the their theirs them then there these they
+    this those through to too under until up very was we were what when where which while who
+    whom why will with would you your yours tell show give latest news today week happened
+    happen anything something""".split()
+)
+
 
 class StoreError(Exception):
     pass
@@ -80,7 +93,7 @@ class IntegrityReport:
 def fts_query(text: str) -> str | None:
     """Turn free text into a safe FTS5 query: each token quoted, joined with OR."""
     tokens = [t.strip(".'-") for t in _FTS_TOKEN.findall(text)]
-    tokens = [t for t in tokens if t]
+    tokens = [t for t in tokens if t and t.lower() not in STOPWORDS]
     if not tokens:
         return None
     return " OR ".join('"' + t.replace('"', '""') + '"' for t in dict.fromkeys(tokens))
@@ -548,6 +561,51 @@ class Store:
                     )
             rep.repaired = True
         return rep
+
+    def delete_where(
+        self,
+        *,
+        sources: list[str] | None = None,
+        regions: list[str] | None = None,
+        categories: list[str] | None = None,
+        from_ts: int | None = None,
+        to_ts: int | None = None,
+        apply: bool,
+    ) -> int:
+        """Preview (apply=False) or delete items matching all given conditions (FR41).
+        At least one condition is required. Seen URLs are kept."""
+        if not (sources or regions or categories or from_ts is not None or to_ts is not None):
+            raise StoreError("give at least one condition")
+        where, params = Filters(regions, categories, from_ts, to_ts).sql("i")
+        if sources:
+            where += f" AND i.source IN ({','.join('?' * len(sources))})"
+            params = [*params, *sources]
+        ids = [
+            r[0] for r in self._conn.execute(f"SELECT item_id FROM items i WHERE {where}", params)
+        ]
+        if apply and ids:
+            with self._conn:
+                self._delete_items(ids)
+        return len(ids)
+
+    def sources_in_store(self) -> list[str]:
+        return [r[0] for r in self._conn.execute("SELECT DISTINCT source FROM items ORDER BY 1")]
+
+    def runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT run_id, started_ts, finished_ts, summary FROM runs "
+            "ORDER BY finished_ts DESC, run_id DESC LIMIT ?",
+            (limit,),
+        )
+        return [
+            {
+                "run_id": r["run_id"],
+                "started": datetime.fromtimestamp(r["started_ts"], tz=UTC),
+                "finished": datetime.fromtimestamp(r["finished_ts"], tz=UTC),
+                **json.loads(r["summary"]),
+            }
+            for r in rows
+        ]
 
     def compact(self) -> None:
         self._conn.execute("VACUUM")

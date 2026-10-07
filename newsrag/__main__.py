@@ -15,6 +15,7 @@ from newsrag.pipeline import collect
 from newsrag.pipeline.fetch import fetch_all
 from newsrag.secrets import KEYS
 from newsrag.settings import Settings, load_settings, save_settings
+from newsrag.sources_config import effective_config
 from newsrag.workspace import (
     WorkspaceError,
     open_workspace,
@@ -22,7 +23,7 @@ from newsrag.workspace import (
     remember_workspace,
 )
 
-NOT_BUILT = {"ui": 6}
+NOT_BUILT: dict[str, int] = {}
 
 
 def _resolve_workspace(arg: str | None) -> Path | None:
@@ -64,7 +65,8 @@ def _settings_for(args: argparse.Namespace) -> Settings:
 
 
 def _cmd_sources(args: argparse.Namespace) -> int:
-    cfg = load_config()
+    root = _resolve_workspace(args.workspace)
+    cfg = effective_config(root if root and root.exists() else None)
     KEYS.load_from_env()
     if not args.check:
         for s in cfg.sources:
@@ -83,7 +85,8 @@ def _cmd_sources(args: argparse.Namespace) -> int:
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
-    cfg = load_config()
+    root = _resolve_workspace(args.workspace)
+    cfg = effective_config(root if root and root.exists() else None)
     settings = _settings_for(args)
     KEYS.load_from_env()
     report = asyncio.run(collect(cfg, settings, KEYS))
@@ -105,7 +108,8 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def _cmd_process(args: argparse.Namespace) -> int:
-    cfg = load_config()
+    root = _resolve_workspace(args.workspace)
+    cfg = effective_config(root if root and root.exists() else None)
     settings = _settings_for(args)
     if args.mode:
         settings.llm.mode = args.mode

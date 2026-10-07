@@ -76,8 +76,3 @@ def test_cli_writes_only_inside_workspace(
     assert outside == []
     assert (root / "settings.json").exists() and (root / "workspace.json").exists()
     assert "Workspace:" in capsys.readouterr().out
-
-
-def test_cli_unbuilt_command(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["ui"]) == 2
-    assert "not built yet" in capsys.readouterr().out

@@ -16,6 +16,7 @@ dependencies = [
     "feedparser>=6.0",
     "numpy>=1.26",
     "sentence-transformers>=3.0",
+    "streamlit>=1.40",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 # Word lists are kept as split strings for readability; curly quotes are intentional
 # in the sentence-splitting pattern.
 "newsrag/engines/rules.py" = ["SIM905", "RUF001"]
+"newsrag/store/__init__.py" = ["SIM905"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -53,7 +55,7 @@ plugins = ["pydantic.mypy"]
 files = ["newsrag", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["feedparser"]
+module = ["feedparser", "pandas"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

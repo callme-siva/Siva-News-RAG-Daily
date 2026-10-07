@@ -100,7 +100,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR15: Store vectors locally with metadata (`region`, `category`, `published_ts`, `source`). v1 keeps them in the workspace SQLite file (float32 BLOBs, searched with numpy), so rows, keyword index and vectors share one transaction. See ARCHITECTURE.md 5.1.
 - FR16: Retrieval is **hybrid search with reranking**, in this order:
   1. **Filter first:** region, category and date range are applied inside both searches, not afterwards.
-  2. **Keyword search:** SQLite FTS5 (BM25) over chunk text, returning `candidates_k` results (default 30).
+  2. **Keyword search:** SQLite FTS5 (BM25) over chunk text, returning `candidates_k` results (default 30). Question words and other stopwords are removed from the query first: joined with OR they would match almost every article and defeat the relevance floor.
   3. **Semantic search:** vector similarity over chunk embeddings, returning `candidates_k` results.
   4. **Fusion:** merge both lists with reciprocal rank fusion (RRF, constant `k = 60`). A `keyword_weight` setting (0–1, default 0.5) balances the two lists.
   5. **Rerank:** a local cross-encoder (default `cross-encoder/ms-marco-MiniLM-L-6-v2`, via `sentence-transformers`) re-scores the fused candidates against the question. On by default; can be turned off. If the model cannot load, skip this step and log it.
@@ -233,6 +233,8 @@ newsrag/
 - Free APIs have daily quotas and may change terms. GDELT throttles to one request per 5 seconds and may reject bursts.
 - Feed URLs change over time and need occasional maintenance.
 - Local models are slower and less reliable at structured output than hosted ones. Quality depends on the model and hardware.
+- Without an LLM, chat lists the top results by score; weaker keyword matches (for example a market story that only mentions "interest rates") can appear at the bottom. The LLM path selects only what answers the question.
+- The UI theme is applied with CSS over Streamlit's own widgets. Very new or rarely used widgets may not follow the dark palette until styled. Fetch has no Stop button in the UI (the CLI can be interrupted).
 - `region` is the region of the **outlet's feed**, not of the story: a US outlet's article about India is tagged US. Region filters therefore narrow by outlet. Story-level region tagging is a later improvement.
 - Changing URL-normalisation rules (for example adding a tracking parameter) can make an already-stored article look new once; the cross-day near-duplicate check (DD3) merges it.
 
