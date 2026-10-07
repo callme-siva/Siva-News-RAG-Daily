@@ -13,7 +13,7 @@ You are building a small Python application called **newsrag**: a daily news int
 ## How to build
 - Build in these stages, committing after each one on its own branch and keeping the tests green:
   1. **Skeleton:** `pyproject.toml`, package layout, pydantic models, `config.yaml` loader, settings persistence (no keys), logging with key redaction.
-  2. **Sources and pipeline:** RSS, Google News RSS and GDELT adapters; optional key-based adapters that are skipped silently when no key exists; filter, dedupe, rank. Unit tests with recorded fixtures (label them as fixtures).
+  2. **Sources and pipeline:** RSS and GDELT adapters (not Google News RSS: its robots.txt disallows /rss); verify every feed URL and its robots.txt before adding it; optional key-based adapters that are skipped silently when no key exists; filter, dedupe, rank. Unit tests with recorded fixtures (label them as fixtures).
   3. **Engines:** `Engine` protocol, `RuleEngine`, `LLMEngine`, selector (`auto | rules | llm`), per-item fallback, pydantic validation of LLM JSON. Mock the LLM in tests.
   4. **Store and retrieval:** duplicate prevention exactly as in section 5.2.1 (DD1–DD8), enforced by database constraints and deterministic IDs, with the duplicate tests from acceptance criterion 15. SQLite, chunking with configurable size and overlap, local embeddings, vector store, and hybrid retrieval as in FR16: filters first, FTS5 keyword search plus semantic search, reciprocal rank fusion, local cross-encoder rerank (toggle, with graceful skip), grouping by article, `top_k` and `min_score`.
   5. **Briefing and chat:** digest generation (template or LLM), grounded chat with numbered citations and the "I don't have news on that" fallback.

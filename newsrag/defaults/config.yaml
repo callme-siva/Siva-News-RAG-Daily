@@ -5,7 +5,9 @@
 #             matched case-insensitively, and should use word boundaries (\b) so that
 #             short terms like "ipl" do not match inside "diplomat".
 # official_domains: sources from these domains always pass the include filter.
-# sources:    added in stage 2, each one verified before it is listed here.
+# sources:    every rss URL below was fetched, parsed and checked against the site's
+#             robots.txt on 2026-10-07. Google News RSS is not used: its robots.txt
+#             disallows /rss. Re-check feeds with: newsrag sources --check
 
 regions:
   - code: US
@@ -35,4 +37,54 @@ official_domains:
   - sebi.gov.in
   - pib.gov.in
 
-sources: []
+sources:
+  # United States
+  - {name: NPR Technology, type: rss, region: US, category: Technology, url: "https://feeds.npr.org/1019/rss.xml"}
+  - {name: NYT Technology, type: rss, region: US, category: Technology, url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"}
+  - {name: TechCrunch, type: rss, region: US, category: Technology, url: "https://techcrunch.com/feed/"}
+  - {name: The Verge, type: rss, region: US, category: Technology, url: "https://www.theverge.com/rss/index.xml"}
+  - {name: NPR Business, type: rss, region: US, category: Finance, url: "https://feeds.npr.org/1006/rss.xml"}
+  - {name: NYT Business, type: rss, region: US, category: Finance, url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"}
+  - {name: CNBC Top News, type: rss, region: US, category: Finance, url: "https://www.cnbc.com/id/100003114/device/rss/rss.html"}
+  - {name: Federal Reserve press, type: rss, region: US, category: Finance, url: "https://www.federalreserve.gov/feeds/press_all.xml"}
+  - {name: SEC press releases, type: rss, region: US, category: Finance, url: "https://www.sec.gov/news/pressreleases.rss"}
+  - {name: NPR Politics, type: rss, region: US, category: Politics, url: "https://feeds.npr.org/1014/rss.xml"}
+  - {name: NYT Politics, type: rss, region: US, category: Politics, url: "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml"}
+
+  # Europe
+  - {name: BBC Technology, type: rss, region: EU, category: Technology, url: "https://feeds.bbci.co.uk/news/technology/rss.xml"}
+  - {name: Guardian Technology, type: rss, region: EU, category: Technology, url: "https://www.theguardian.com/uk/technology/rss"}
+  - {name: BBC Business, type: rss, region: EU, category: Finance, url: "https://feeds.bbci.co.uk/news/business/rss.xml"}
+  - {name: Guardian Business, type: rss, region: EU, category: Finance, url: "https://www.theguardian.com/uk/business/rss"}
+  - {name: DW Business, type: rss, region: EU, category: Finance, url: "https://rss.dw.com/rdf/rss-en-bus"}
+  - {name: ECB press, type: rss, region: EU, category: Finance, url: "https://www.ecb.europa.eu/rss/press.html"}
+  - {name: BBC Europe, type: rss, region: EU, category: Politics, url: "https://feeds.bbci.co.uk/news/world/europe/rss.xml"}
+  - {name: Guardian Europe, type: rss, region: EU, category: Politics, url: "https://www.theguardian.com/world/europe-news/rss"}
+  - {name: DW Top Stories, type: rss, region: EU, category: Politics, url: "https://rss.dw.com/rdf/rss-en-all"}
+  - {name: France24 Europe, type: rss, region: EU, category: Politics, url: "https://www.france24.com/en/europe/rss"}
+  - {name: Euronews, type: rss, region: EU, category: Politics, url: "https://www.euronews.com/rss?level=theme&name=news"}
+  - {name: Politico Europe, type: rss, region: EU, category: Politics, url: "https://www.politico.eu/feed/"}
+
+  # India
+  - {name: The Hindu Technology, type: rss, region: IN, category: Technology, url: "https://www.thehindu.com/sci-tech/technology/feeder/default.rss"}
+  - {name: ET Tech, type: rss, region: IN, category: Technology, url: "https://economictimes.indiatimes.com/tech/rssfeeds/13357270.cms"}
+  - {name: Inc42, type: rss, region: IN, category: Technology, url: "https://inc42.com/feed/"}
+  - {name: The Hindu Business, type: rss, region: IN, category: Finance, url: "https://www.thehindu.com/business/feeder/default.rss"}
+  - {name: ET Markets, type: rss, region: IN, category: Finance, url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"}
+  - {name: Mint Markets, type: rss, region: IN, category: Finance, url: "https://www.livemint.com/rss/markets"}
+  - {name: RBI press releases, type: rss, region: IN, category: Finance, url: "https://www.rbi.org.in/pressreleases_rss.xml", timezone: Asia/Kolkata, note: "Dates have no timezone; IST applied"}
+  - {name: SEBI, type: rss, region: IN, category: Finance, url: "https://www.sebi.gov.in/sebirss.xml", timezone: Asia/Kolkata}
+  - {name: The Hindu National, type: rss, region: IN, category: Politics, url: "https://www.thehindu.com/news/national/feeder/default.rss"}
+  - {name: Indian Express India, type: rss, region: IN, category: Politics, url: "https://indianexpress.com/section/india/feed/"}
+  - {name: Mint Politics, type: rss, region: IN, category: Politics, url: "https://www.livemint.com/rss/politics"}
+  - {name: PIB, type: rss, region: IN, category: Politics, url: "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3", note: "English edition; feed has no dates, fetch time is used"}
+
+  # GDELT topic searches (no key). Off by default: GDELT allows one request per 5 seconds
+  # and throttled heavily during verification. Only the India query format was confirmed live.
+  - {name: GDELT India Finance, type: gdelt, region: IN, category: Finance, enabled: false, query: '("interest rates" OR inflation OR RBI OR Sensex) sourcecountry:IN sourcelang:english'}
+  - {name: GDELT US Finance, type: gdelt, region: US, category: Finance, enabled: false, query: '("interest rates" OR inflation OR "Federal Reserve") sourcecountry:US sourcelang:english', note: "Query format not yet confirmed live"}
+  - {name: GDELT Europe Finance, type: gdelt, region: EU, category: Finance, enabled: false, query: '("interest rates" OR inflation OR ECB) (sourcecountry:UK OR sourcecountry:GM OR sourcecountry:FR) sourcelang:english', note: "Query format not yet confirmed live"}
+
+  # Key-based sources. Used only when the key is present (env var or UI); skipped otherwise.
+  - {name: GNews India, type: api, api: gnews, region: IN, category: Finance, query: "RBI OR Sensex OR inflation", params: {country: in}, note: "Not yet run against the live API"}
+  - {name: NewsData US, type: api, api: newsdata, region: US, category: Finance, query: "interest rates OR inflation", params: {country: us}, note: "Not yet run against the live API"}

@@ -10,11 +10,13 @@ import re
 from importlib import resources
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SourceType = Literal["rss", "google_news", "gdelt", "api"]
+# Google News RSS is not a source type: news.google.com/robots.txt disallows every /rss path.
+SourceType = Literal["rss", "gdelt", "api"]
 
 
 class Region(BaseModel):
@@ -49,8 +51,9 @@ class Category(BaseModel):
 
 
 class SourceConfig(BaseModel):
-    """One configured source. `url` is used by rss; `query` by google_news and gdelt;
-    `api` names the key-based adapter (gnews, newsdata, ...)."""
+    """One configured source. `url` is used by rss; `query` by gdelt and api sources;
+    `api` names the key-based adapter (gnews, newsdata). `timezone` (IANA name) is applied
+    to dates the feed publishes without one. `params` are extra adapter query parameters."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -61,13 +64,21 @@ class SourceConfig(BaseModel):
     url: str | None = None
     query: str | None = None
     api: str | None = None
+    timezone: str | None = None
+    params: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
+    note: str | None = None
 
     @model_validator(mode="after")
     def _fields_for_type(self) -> SourceConfig:
-        needed = {"rss": "url", "google_news": "query", "gdelt": "query", "api": "api"}[self.type]
+        needed = {"rss": "url", "gdelt": "query", "api": "api"}[self.type]
         if not getattr(self, needed):
             raise ValueError(f"Source {self.name!r} of type {self.type!r} needs {needed!r}")
+        if self.timezone:
+            try:
+                ZoneInfo(self.timezone)
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise ValueError(f"Source {self.name!r}: unknown timezone") from exc
         return self
 
 

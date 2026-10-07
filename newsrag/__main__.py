@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
 from newsrag import __version__
 from newsrag.config import load_config
 from newsrag.logging_setup import setup_logging
+from newsrag.pipeline import collect
+from newsrag.pipeline.fetch import fetch_all
 from newsrag.secrets import KEYS
-from newsrag.settings import load_settings, save_settings
+from newsrag.settings import Settings, load_settings, save_settings
 from newsrag.workspace import (
     WorkspaceError,
     open_workspace,
@@ -18,7 +21,7 @@ from newsrag.workspace import (
     remember_workspace,
 )
 
-NOT_BUILT = {"run": 2, "chat": 5, "ui": 6}
+NOT_BUILT = {"run": 4, "chat": 5, "ui": 6}
 
 
 def _resolve_workspace(arg: str | None) -> Path | None:
@@ -54,6 +57,52 @@ def _cmd_config(_: argparse.Namespace) -> int:
     return 0
 
 
+def _settings_for(args: argparse.Namespace) -> Settings:
+    root = _resolve_workspace(args.workspace)
+    return load_settings(open_workspace(root, create=False).root) if root else Settings()
+
+
+def _cmd_sources(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    KEYS.load_from_env()
+    if not args.check:
+        for s in cfg.sources:
+            state = "on " if s.enabled else "off"
+            where = s.url or s.query or s.api
+            print(f"{state} {s.region} {s.category:<10} {s.type:<5} {s.name:<24} {where}")
+        return 0
+    sources = [s for s in cfg.sources if s.enabled or args.all]
+    results = asyncio.run(fetch_all(sources, KEYS, max_age_hours=24 * 30))
+    failed = 0
+    for src, res in zip(sources, results, strict=True):
+        failed += res.status == "error"
+        detail = res.error or f"{res.count} items"
+        print(f"{res.status:<7} {src.region} {src.name:<24} {res.elapsed_s:>5.1f}s  {detail}")
+    return 1 if failed else 0
+
+
+def _cmd_fetch(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    settings = _settings_for(args)
+    KEYS.load_from_env()
+    report = asyncio.run(collect(cfg, settings, KEYS))
+    for r in report.sources:
+        if r.status != "ok":
+            print(f"  {r.status:<7} {r.source}: {r.error or 'no items'}")
+    f = report.filter
+    print(
+        f"Fetched {report.fetched} | too old {f.too_old} | excluded {f.excluded} | "
+        f"off-topic {f.not_relevant} | merged duplicates {report.merged_duplicates} | "
+        f"over cap {report.capped} | kept {len(report.items)}"
+    )
+    print("(dry run: nothing is stored until stage 4)")
+    for item in report.items[: args.show]:
+        also = f" (+{len(item.also_reported_by)})" if item.also_reported_by else ""
+        when = item.published_at.strftime("%d %b %H:%M")
+        print(f"  {item.region} {item.category:<10} {when}  {item.title[:80]}{also}")
+    return 0
+
+
 def _cmd_recent(_: argparse.Namespace) -> int:
     for path in recent_workspaces():
         print(path)
@@ -68,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("workspace", help="create or open a workspace and show its details")
     sub.add_parser("recent", help="list recent workspaces")
     sub.add_parser("config", help="show regions, categories, sources and detected keys")
+    p_src = sub.add_parser("sources", help="list sources, or --check them live")
+    p_src.add_argument("--check", action="store_true", help="fetch each source and report status")
+    p_src.add_argument("--all", action="store_true", help="with --check, include disabled sources")
+    p_fetch = sub.add_parser("fetch", help="fetch, filter, dedupe and rank (dry run, no storage)")
+    p_fetch.add_argument("--show", type=int, default=20, help="how many items to print")
     for name in NOT_BUILT:
         sub.add_parser(name, help=f"(available from stage {NOT_BUILT[name]})")
     return parser
@@ -75,7 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    handlers = {"workspace": _cmd_workspace, "config": _cmd_config, "recent": _cmd_recent}
+    handlers = {
+        "workspace": _cmd_workspace,
+        "config": _cmd_config,
+        "recent": _cmd_recent,
+        "sources": _cmd_sources,
+        "fetch": _cmd_fetch,
+    }
     if args.command in NOT_BUILT:
         print(f"'{args.command}' is not built yet (stage {NOT_BUILT[args.command]}).")
         return 2

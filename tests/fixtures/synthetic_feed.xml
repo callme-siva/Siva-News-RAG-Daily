@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SYNTHETIC FIXTURE: invented content for tests, not real news. -->
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+  <title>Synthetic Finance Feed</title>
+  <link>https://example.com/</link>
+  <description>Test fixture</description>
+  <item>
+    <title>Fixture Central Bank holds benchmark interest rates steady</title>
+    <link>https://www.example.com/markets/fixture-rates?utm_source=rss</link>
+    <pubDate>Wed, 07 Oct 2026 08:00:00 GMT</pubDate>
+    <description><![CDATA[<p>The fixture central bank kept <b>rates</b> unchanged.</p><script>track()</script>]]></description>
+    <content:encoded><![CDATA[<p>The fixture central bank kept rates unchanged at its October meeting &amp; signalled patience.</p>]]></content:encoded>
+  </item>
+  <item>
+    <title>Reserve note on overnight liquidity operations</title>
+    <link>https://example.com/markets/naive-date</link>
+    <pubDate>Wed, 07 Oct 2026 12:50:00</pubDate>
+    <description>Body text for the naive date item.</description>
+  </item>
+  <item>
+    <title>Regulator issues circular on mutual fund disclosures</title>
+    <link>https://example.com/markets/sebi-date</link>
+    <pubDate>05 Oct, 2026 +0530</pubDate>
+  </item>
+  <item>
+    <title>Ministry publishes quarterly trade statistics</title>
+    <link>https://example.com/markets/no-date</link>
+  </item>
+  <item>
+    <title>Fixture item without a link is skipped</title>
+    <pubDate>Wed, 07 Oct 2026 08:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title></title>
+    <link>https://example.com/markets/no-title</link>
+  </item>
+</channel>
+</rss>

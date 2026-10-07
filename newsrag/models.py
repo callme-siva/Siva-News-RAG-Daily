@@ -49,6 +49,7 @@ class Item(BaseModel):
     fetched_via: FetchedVia
     kind: str = "news"
     also_reported_by: tuple[str, ...] = ()
+    also_reported_urls: tuple[str, ...] = ()
     tags: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("url")
