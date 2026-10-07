@@ -23,7 +23,7 @@ This document explains **how the app is put together, which tools it uses, why e
  INGEST (on demand)                │                          │         SERVE
  ─────────────────                 │                          │         ─────
  Source adapters ─► Normalise ─► Filter ─► Dedupe/Rank ─► Engine.process ─► Chunk ─► Index
- (RSS, Google News,                                         (rules | LLM)          (FTS5 + vectors)
+ (RSS, GDELT,                                              (rules | LLM)          (FTS5 + vectors)
   GDELT, keyed APIs)                                                                     │
                                                                                          ▼
                                     Today (digest) ◄─ Engine.briefing        Ask / Browse
@@ -87,7 +87,7 @@ All operations above are exposed as **tools** (`newsrag/tools/`), which the UI, 
 | HTTP | `httpx` + `tenacity` | Async, timeouts, clean retry with backoff | Parallel fetch; one bad feed never stalls the run | `requests` (sync only) |
 | Feeds | `feedparser` | Mature, handles messy real-world RSS and Atom | Fewer parsing failures | Hand-written XML parsing |
 | Full text (optional) | `trafilatura` | Strong article extraction | Richer summaries when allowed | `newspaper3k` (less maintained) |
-| Dedupe | `rapidfuzz` | Fast fuzzy matching in C | Same story from 5 outlets becomes 1 item with "also reported by" | Hand-rolled Jaccard (slower, cruder) |
+| Dedupe | Jaccard overlap of significant headline words (stdlib) | Simple, explainable, no dependency; a few thousand items a day is well within its speed | Same story from 5 outlets becomes 1 item with "also reported by" | `rapidfuzz` (considered; its token-set scores over-merge short headlines) |
 | Data models | `pydantic` v2 | Typed models, validation, JSON schema export | Validates LLM JSON; generates tool schemas for agents | dataclasses (no validation) |
 | Config | YAML (`pyyaml`) | Human-editable | Colleagues add feeds without code | JSON (harder to hand-edit) |
 | Database | SQLite | Built in, single file, zero setup, FTS5 included | Portable workspace, backups are a file copy | Postgres (needs a server) |

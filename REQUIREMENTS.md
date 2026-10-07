@@ -41,7 +41,7 @@ It works with **no API keys** (pure Python rules) and **upgrades automatically**
   - US examples: NPR, NYT, CNBC, Federal Reserve press releases.
   - Europe examples: BBC, The Guardian, DW, France24, Euronews, ECB press.
   - India examples: The Hindu, Economic Times, Mint, PIB, RBI, SEBI.
-- Google News RSS search per region and topic (`hl` and `gl` parameters).
+- ~~Google News RSS~~: **not used.** `news.google.com/robots.txt` disallows every `/rss` path (checked 2026-10-07), so it conflicts with R7. Topic searches use GDELT instead.
 - GDELT DOC 2.0 API (country and language filters).
 
 **Optional free-tier keys (each enables an extra adapter; absent key = adapter skipped silently):**
@@ -53,7 +53,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 ### 5.1 Fetch
 - FR1: Run all enabled adapters in parallel with timeouts, retry (3 tries, backoff) and per-source error capture.
 - FR2: Normalise to `Article{id, headline, body, url, source, region, category, published_at, fetched_via}`.
-- FR3: Resolve Google News redirect links to the real publisher URL where possible.
+- FR3: Follow HTTP redirects to the final URL. Never accept consent or cookie walls to reach an article.
 
 ### 5.2 Filter, dedupe, rank
 - FR4: Drop articles older than `max_age_hours` (default 48) or matching a category `exclude` pattern. Patterns use word boundaries.
@@ -62,11 +62,11 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR7: Rank by number of outlets reporting, then recency. Cap per category and region (`max_per_group`, default 15).
 
 ### 5.2.1 Duplicate prevention (four layers)
-- DD1 **URL identity:** normalise every URL (lowercase host, drop `www.`, tracking parameters such as `utm_*`, `ref`, `fbclid`, `gclid`, fragments and trailing slashes; prefer `https`; resolve Google News redirects). `item_id = sha256(normalised_url)`.
+- DD1 **URL identity:** normalise every URL (lowercase host, drop `www.`, tracking parameters such as `utm_*`, `ref`, `fbclid`, `gclid`, fragments and trailing slashes; prefer `https`). `item_id = sha256(normalised_url)`.
 - DD2 **Across runs:** `items.item_id` is a `PRIMARY KEY` and `seen_urls.url` is `UNIQUE`. Writes use `INSERT … ON CONFLICT DO NOTHING`. Seen URLs are skipped **before** processing, so no LLM call is spent on them. `seen_urls` survives cleanup (FR40).
 - DD3 **Same story, different URL:**
   - Within a fetch: fuzzy headline match (FR6) merges items and records `also_reported_by`.
-  - Across days: before storing, compare with items from the last `dedupe_window_days` (default 3) in the same category, using headline similarity (`rapidfuzz`, threshold `dedupe_threshold`) and, when headlines are borderline, embedding similarity (default ≥ 0.90). A match is attached to the existing item as an additional source link; it is not stored as a new item.
+  - Across days: before storing, compare with items from the last `dedupe_window_days` (default 3) in the same category, using headline similarity (Jaccard overlap of significant headline words, threshold `dedupe_threshold`) and, when headlines are borderline, embedding similarity (default ≥ 0.90). A match is attached to the existing item as an additional source link; it is not stored as a new item.
   - Merged items keep every source URL, so nothing is lost and the user can see which outlets reported it.
 - DD4 **Index writes are idempotent:** `chunk_id = f"{item_id}:{chunk_index}"`, used as the ID in the chunks table, FTS5 and the vector store. Writes are upserts. Each item is ingested in one transaction (item row, chunks, FTS rows, vectors), and the item is marked done only after all succeed. If the vector write fails, the SQLite part is rolled back and the item is retried next run.
 - DD5 **Updated articles:** store `content_hash = sha256(clean_text)`. If a later fetch finds the same URL with a different hash, apply `on_update` setting: `ignore` (default) or `replace` (re-process and replace chunks and vectors, keeping the same `item_id`).
@@ -133,10 +133,10 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR31: No login or accounts. "Opening a workspace" is the start step. A workspace can optionally be protected with a passphrase in a later version (not v1).
 
 ### 5.9 Source (feed) management
-- FR32: The **Sources** page lists every configured source in a table: name, type (RSS, Google News, GDELT, API), region, category, URL, enabled, last fetch time, last status (ok, empty, error + message), items added last run.
+- FR32: The **Sources** page lists every configured source in a table: name, type (RSS, GDELT, API), region, category, URL, enabled, last fetch time, last status (ok, empty, error + message), items added last run.
 - FR33: Users can **add** a source: paste an RSS URL, the app validates it (fetches it, parses it, shows the feed title and 3 latest headlines) before saving. Region and category are chosen from lists or a new value is typed.
 - FR34: Users can edit, enable or disable, test, and delete a source. Bulk import and export as OPML or YAML.
-- FR35: Google News sources are added as a query plus region (for example "RBI repo rate", India), not a raw URL.
+- FR35: GDELT sources are added as a query plus region (for example "RBI repo rate", India), not a raw URL. Before saving any new source, the app checks the site's robots.txt and refuses disallowed URLs.
 - FR36: The default sources ship in `config.yaml`. User changes are stored in the workspace, so the shipped defaults are never edited and can be restored.
 - FR37: A source that fails 5 runs in a row is flagged "needs attention" (not deleted).
 
@@ -172,7 +172,7 @@ Every control has a one-line help tooltip and a "Reset to defaults" button.
 | HTTP | `httpx` (async), `tenacity` for retries |
 | Feeds | `feedparser` |
 | Article text (optional) | `trafilatura` |
-| Dedupe | `rapidfuzz` |
+| Dedupe | Jaccard overlap of significant headline words (standard library, no dependency) |
 | Models and validation | `pydantic` v2, `pyyaml` |
 | Storage | `sqlite3` (stdlib), `chromadb` or `lancedb` |
 | Local embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) |
@@ -192,7 +192,7 @@ newsrag/
   config.yaml            # sources, regions, categories, defaults
   newsrag/
     models.py            # Article, Processed, Settings (pydantic)
-    sources/             # rss.py, google_news.py, gdelt.py, gnews.py, newsdata.py ...
+    sources/             # rss.py, gdelt.py, keyed.py (gnews, newsdata), http.py, parsing.py
     pipeline/            # fetch.py, filter.py, dedupe.py, chunk.py
     engines/             # base.py (Engine protocol), rules.py, llm.py, select.py
     store/               # db.py (SQLite), vectors.py
@@ -229,7 +229,7 @@ newsrag/
 
 ## 10. Known limits
 - RSS often gives only a snippet. Rule-based summaries are weaker than LLM ones.
-- Free APIs have daily quotas and may change terms. Google News and GDELT can throttle.
+- Free APIs have daily quotas and may change terms. GDELT throttles to one request per 5 seconds and may reject bursts.
 - Feed URLs change over time and need occasional maintenance.
 - Local models are slower and less reliable at structured output than hosted ones. Quality depends on the model and hardware.
 

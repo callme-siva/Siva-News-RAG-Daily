@@ -12,7 +12,10 @@ def test_shipped_defaults_load() -> None:
     cfg = load_config()
     assert cfg.region_codes() == ["US", "EU", "IN"]
     assert {c.name for c in cfg.categories} == {"Technology", "Finance", "Politics"}
-    assert cfg.sources == []
+    regions_covered = {(s.region, s.category) for s in cfg.sources if s.enabled}
+    assert len(regions_covered) == 9, "every region x category has at least one enabled source"
+    assert all(s.type != "gdelt" or not s.enabled for s in cfg.sources)
+    assert not any("news.google.com" in (s.url or "") for s in cfg.sources)
 
 
 def test_politics_exclude_does_not_drop_diplomacy() -> None:
@@ -47,7 +50,7 @@ def test_source_must_reference_known_region_and_category(tmp_path: Path) -> None
 
 
 def test_source_needs_field_for_its_type(tmp_path: Path) -> None:
-    bad = BASE + "sources: [{name: X, type: google_news, region: IN, category: Finance}]"
+    bad = BASE + "sources: [{name: X, type: gdelt, region: IN, category: Finance}]"
     with pytest.raises(ValidationError, match="needs 'query'"):
         load_config(_write(tmp_path, bad))
 
