@@ -19,21 +19,20 @@ providers only. Paths in the raw output are shortened to `ws/` (the fresh worksp
 | 7 | Key not found in repo, database, logs, `settings.json` | **Pass** | Live run A7 + `test_keys_are_memory_only` (UI) + `test_logs_on_disk_never_contain_keys` |
 | 8 | Tests, ruff, mypy pass; new feed needs `config.yaml` only | **Pass** | A8 output; feeds are data in `config.yaml` (or added in the UI) |
 | 9 | Sources page validates a feed; invalid URL rejected with a clear message | **Pass** | `test_check_feed_ok_blocked_and_not_a_feed` (robots-blocked and non-feed URLs rejected with messages), `test_sources_add_feed_after_check` |
-| 10 | Everything written stays in the workspace, except the remembered path | **Partial** | Live A10: app data is all in the workspace, only `recent.json` outside. **But** the embedding and rerank models download to the shared Hugging Face cache (`~/.cache/huggingface`) on first use. See "Open item" |
+| 10 | Everything written stays in the workspace, except the remembered path | **Pass (documented exception)** | Live A10: all app data is in the workspace; only `recent.json` is outside. The embedding and rerank models live in the shared Hugging Face cache (`~/.cache/huggingface`), by decision (see below) |
 | 11 | Cleanup with retention removes exactly older articles + chunks + vectors; verify clean | **Pass** | `test_cleanup_removes_old_items_and_their_rows`; live preview in stage 4 and the UI |
 | 12 | Ollama running: `auto` uses it; Ollama stopped: falls back to rules | **Stopped case live; running case with mocks only** | Every live run here had Ollama stopped and fell back to rules. `test_select_auto_with_working_ollama`, `test_select_check_failure_closes_client`, `test_ollama_missing_model_and_down_server` |
 | 13 | Every tool callable with no LLM; valid JSON schema for each | **Pass** | `test_read_only_tools_run_without_llm`, `test_schemas_are_valid_json_objects`, `test_registry_has_the_required_tools_and_flags` |
 | 14 | Exact term found in Hybrid; rerank scores shown; works without rerank | **Pass** | `test_exact_term_found_in_hybrid`, `test_rerank_scores_shown_and_order_follows_rerank`, `test_search_works_without_or_with_broken_reranker[None/reranker1]` |
 | 15 | Duplicate tests (five cases) | **Pass** | `test_ingest_twice_changes_nothing`, `test_url_variants_are_one_item`, `test_same_story_next_day_from_another_outlet_is_merged`, `test_crash_during_vector_write_leaves_nothing_then_rerun_is_clean`, `test_series_upsert_replaces_correction` |
 
-**12 pass, 1 partial (10), 2 verified with mocks only (2, and the "Ollama running" half of 12).**
+**13 pass (10 with a documented exception), 2 verified with mocks only (2, and the "Ollama running" half of 12).**
 
-## Open item (criterion 10)
-Model downloads go to the Hugging Face cache in the user's home folder, shared by all
-workspaces. Options:
-1. Keep it (current): one download for all workspaces; document it. **Recommended.**
-2. Per workspace: set the cache to `<workspace>/models`; about 180 MB per workspace.
-3. App-level: set it next to `recent.json` in the app-config folder.
+## Decision (criterion 10): shared model cache
+Decided by Siva on 2026-10-07: keep the downloaded models in the shared Hugging Face cache
+(`~/.cache/huggingface`). Models are tools the app uses, like Python itself, not user data:
+one ~180 MB download serves every workspace, later runs work offline, and workspace backups
+stay small. Rejected: a per-workspace `models/` folder (~180 MB per workspace).
 
 ## To close the mock-only items
 Install Ollama and a model, then repeat A1 and A3:

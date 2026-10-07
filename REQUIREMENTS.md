@@ -127,7 +127,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 - FR26: `python -m newsrag chat` gives a terminal chat. `python -m newsrag ui` starts the UI. Scheduling (cron, launchd, GitHub Actions) is optional and documented in the README.
 
 ### 5.8 Data location (workspace)
-- FR27: All data lives in one **workspace folder**: SQLite DB, vector index, digests, run logs and `settings.json`. Nothing is written outside it.
+- FR27: All data lives in one **workspace folder**: SQLite DB, vector index, digests, run logs and `settings.json`. Nothing is written outside it. Exception (decided 2026-10-07): downloaded models stay in the shared Hugging Face cache (`~/.cache/huggingface`), because they are tools, not user data.
 - FR28: On start, the app asks for the workspace: pick a recent one, choose an existing folder, or create a new one. The last choice is remembered (path only) in the user's app-config folder. `--workspace PATH` overrides it on the CLI.
 - FR29: Workspaces are portable: copying the folder to another machine or cloud-synced drive works. A workspace records its schema version and the embedding model used, and refuses to mix embeddings from a different model (offers re-index).
 - FR30: Multiple workspaces are allowed (for example "work" and "personal"). Switching does not need a restart.
