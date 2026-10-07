@@ -81,7 +81,7 @@ Feed URLs must be verified when first added, and dead feeds are reported in the 
 
 ### 5.3 Process (engine interface)
 - FR8: `Engine.process(article) -> Processed{relevant, category, summary, key_facts[], entities{}, engine}`.
-- FR9: `RuleEngine`: keyword relevance, extractive summary (first sentences or TextRank), entities by spaCy or capitalised-phrase rules.
+- FR9: `RuleEngine`: keyword relevance, extractive summary (lead sentences), key facts (sentences with numbers), entities by capitalisation and keyword rules. Every output string is copied from the article. TextRank or spaCy may be added later behind the same interface.
 - FR10: `LLMEngine`: one JSON-schema response per article, validated with pydantic. On invalid JSON, retry once, then fall back to `RuleEngine` for that item.
 - FR11: Engine selection: `mode = auto | rules | llm`. `auto` uses the LLM if one is available: a hosted provider with a key, **or a local model server that responds** (see 5.3.1). Otherwise it uses rules.
 
@@ -178,8 +178,8 @@ Every control has a one-line help tooltip and a "Reset to defaults" button.
 | Local embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) |
 | Keyword search | SQLite FTS5 (built into Python's `sqlite3`) |
 | Reranking | `sentence-transformers` `CrossEncoder` (`ms-marco-MiniLM-L-6-v2`) |
-| Rule-based NLP | `sumy` (TextRank), `spaCy` small English model (optional) |
-| LLM (optional) | `anthropic`, `google-genai`, or an OpenAI-compatible client |
+| Rule-based NLP | Standard-library extractive rules (no dependency); TextRank/spaCy optional later |
+| LLM (optional) | Claude via the official `anthropic` SDK (`pip install newsrag[anthropic]`; default model `claude-opus-5-5`, structured outputs, refusal fallbacks); Gemini and OpenAI-compatible providers via `httpx` |
 | Local LLM (optional) | Ollama via its HTTP API (`httpx`, no extra SDK needed) or any OpenAI-compatible local server |
 | Feed import/export | OPML parsing with stdlib `xml.etree` |
 | UI | `streamlit` |

@@ -8,9 +8,20 @@ LLM automatically when one is available, including local models via Ollama.
 - Prompt to rebuild it with Claude Code: [PROMPT.md](PROMPT.md)
 
 ## Status
-Stage 2 of 7: skeleton (stage 1) plus sources and the deterministic pipeline: 35 verified RSS
-feeds across US, Europe and India, GDELT (off by default), optional GNews and NewsData adapters,
-then filter, dedupe and rank. Storage, search, digest, chat and UI arrive in later stages.
+Stage 3 of 7: skeleton, sources and pipeline (stages 1-2), plus the two engines. `RuleEngine`
+works with no key; `LLMEngine` uses Ollama, a local OpenAI-compatible server, Claude, Gemini or
+an OpenAI-compatible API, validates every reply, and falls back to rules per item. Storage,
+search, digest, chat and UI arrive in later stages.
+
+## LLM options (all optional)
+- **Local, no key:** install [Ollama](https://ollama.com), pull a model, and leave the provider
+  set to `ollama` (the default). With no model set, the first installed model is used.
+- **Claude:** `uv pip install -e ".[anthropic]"` and set `ANTHROPIC_API_KEY`. Default model is
+  `claude-opus-5-5`; choose another per task in Settings.
+- **Gemini / OpenAI-compatible:** set the key and choose a model in Settings.
+
+`auto` mode (default) tries the configured provider, then Claude if a key is present, then
+falls back to rules and says why.
 
 ## Setup
 ```bash
@@ -25,6 +36,7 @@ uv pip install -e ".[dev]"
 .venv/bin/python -m newsrag sources            # list configured sources
 .venv/bin/python -m newsrag sources --check    # fetch each one live and report status
 .venv/bin/python -m newsrag fetch --show 20    # dry run: fetch, filter, dedupe, rank
+.venv/bin/python -m newsrag process --limit 5  # dry run: fetch, then summarise and tag
 ```
 
 ## Sources
