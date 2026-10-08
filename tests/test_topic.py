@@ -24,7 +24,9 @@ from newsrag.topic import (
 from tests.conftest_ctx import tool_context
 from tests.test_engines import FakeLLM
 
-NOW = datetime.now(UTC)
+# Pinned to midday UTC: the fixtures are published 2-6 hours before "now", and with the real
+# clock between 00:00 and 05:00 UTC they straddled midnight, which changed the ordering by day.
+NOW = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
 TODAY = NOW.date()
 
 
