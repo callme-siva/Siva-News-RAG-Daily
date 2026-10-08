@@ -151,6 +151,24 @@ sequenceDiagram
     end
 ```
 
+### 4.6 Topic brief
+Summarises everything stored about a topic over a time range (the digest only covers 24 hours).
+```mermaid
+flowchart LR
+    T["Topic + time range<br/>+ regions"] --> S["Hybrid search<br/>one article per story"]
+    S --> C{"Mentions at least half<br/>of the topic's words?"}
+    C -->|no| X["Left out, counted in a note"]
+    C -->|yes| N["Number, order by date,<br/>then by relevance"]
+    N --> W{"LLM available?"}
+    W -->|no| R["Rules writer:<br/>lead sentences, headlines,<br/>figure sentences"]
+    W -->|yes| L["LLM writes lines<br/>as JSON with article numbers"]
+    L --> V["Code validates:<br/>drop unknown refs,<br/>drop figures not in the cited articles,<br/>set dates from articles"]
+    V --> F["Fill empty sections<br/>from the rules writer"]
+    R --> O["Brief: overview, timeline,<br/>by region, key numbers, sources"]
+    F --> O
+```
+The same split as the digest and chat: code decides what is shown and every date, link and figure; the writer only phrases it.
+
 ## 5. Tool and library choices
 | Area | Tool | Why chosen | Benefit | Alternatives considered |
 |------|------|-----------|---------|-------------------------|

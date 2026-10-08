@@ -178,6 +178,12 @@ def main() -> None:
                 ),
                 st.Page(pages.ask_page, title="Ask", icon=":material/chat:", url_path="ask"),
                 st.Page(
+                    pages.topic_page,
+                    title="Topic brief",
+                    icon=":material/summarize:",
+                    url_path="topic",
+                ),
+                st.Page(
                     pages.browse_page, title="Browse", icon=":material/search:", url_path="browse"
                 ),
                 st.Page(

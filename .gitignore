@@ -10,3 +10,6 @@ __pycache__/
 dist/
 build/
 workspaces/
+
+# Local test workspace created from the UI; contains personal data, never commit
+zczc/

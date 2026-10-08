@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from newsrag.runner import RunOutcome, run_ingest
 from newsrag.search import SearchFilters, SearchResult, search
 from newsrag.tools.context import ToolContext
+from newsrag.topic import TopicBrief, build_brief
 
 
 class _In(BaseModel):
@@ -220,6 +221,29 @@ def compare_periods(ctx: ToolContext, args: ComparePeriodsInput) -> ComparePerio
 
     a, b = one(args.period_a), one(args.period_b)
     return ComparePeriodsOutput(period_a=a, period_b=b, count_a=len(a.hits), count_b=len(b.hits))
+
+
+# ---------- topic_brief ----------
+
+
+class TopicBriefInput(_In):
+    topic: str = Field(min_length=1, description="Topic or keywords, e.g. 'RBI interest rates'")
+    regions: list[str] | None = None
+    categories: list[str] | None = None
+    days: int = Field(30, ge=1, le=365, description="How many days back to look")
+    max_articles: int = Field(25, ge=3, le=50)
+
+
+async def topic_brief(ctx: ToolContext, args: TopicBriefInput) -> TopicBrief:
+    """Structured brief of stored news on a topic (overview, timeline, regions, key numbers)."""
+    return await build_brief(
+        ctx,
+        args.topic,
+        regions=args.regions,
+        categories=args.categories,
+        days=args.days,
+        max_articles=args.max_articles,
+    )
 
 
 # ---------- fetch_now (changes data) ----------
